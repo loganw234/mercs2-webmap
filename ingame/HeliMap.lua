@@ -2,19 +2,19 @@ local KEYVAL = "f6"   -- toggle key (add "HeliMap.lua=f6" under [OnKey]); press 
 
 -- HeliMap.lua -- terrain-FOLLOWING stripe sweep via Object.GetHeightAboveTerrain.
 --
--- GetHeightAboveTerrain only reaches ~155u down (beyond that it returns a ~155.69 "no hit" sentinel). The map
--- spans ~500u of elevation (water ~-33 to mountains ~470+), so a fixed flight altitude can't read all of it.
--- Instead we FOLLOW the terrain: keep the box row a fixed SETPOINT (~90u) above the LAST reading so it stays
--- in ray range as the ground rises/falls, and ride the heli (physics OFF -> can't crash) just above the boxes.
--- Seeded from START_GROUND. If a column reads nothing (a cliff jumped out of range) it searches the altitude
--- back onto the terrain before advancing.
+-- GetHeightAboveTerrain only reaches ~155u down (155.69 = the no-hit sentinel), and the map spans ~500u of
+-- elevation, so altitude must follow the ground. CRUCIALLY each box in the row follows its OWN column's
+-- terrain (independent altitude) -- a shared altitude can't read a cross-slope, so only the one matching box
+-- was reading. The heli (physics OFF -> can't crash) rides above the median. Seeded from START_GROUND; a box
+-- that loses the ground (out of ray range) searches its altitude back onto it.
 --
--- NEVER moves the player after the ONE initial teleport: Ess.Easy.Vehicle.summon seats them, then only the
--- heli/boxes move. Heli is summoned only after STREAM_WAIT so the start is streamed (else the seat fails and
--- the empty heli flies off). One forward (+X) stripe per run; do parallel passes by hand (bump START_Z).
+-- NEVER moves the player after the ONE initial teleport (Ess.Easy.Vehicle.summon seats them; then only the
+-- heli/boxes move). Summon waits STREAM_WAIT so the start is streamed. One stripe per run along SWEEP_DIR*X;
+-- do parallel passes by hand (bump START_Z by +ROW_N*STEP).
 --
--- ★ TUNE:  START_X/START_Z + START_GROUND (your start point and its ground height), LENGTH, ROW_N/STEP,
---   SETPOINT/SENTINEL_H/SEARCH (follower), STREAM_WAIT, MOVE_STEP/DT (speed), HELI_CLEAR, HELI_TEMPLATE.
+-- ★ TUNE:  START_X/START_Z + START_GROUND (start point + its terrain height), SWEEP_DIR (-1 = -X into the
+--   map from the +X corner; +1 = +X), LENGTH, ROW_N/STEP, SETPOINT/SENTINEL_H/SEARCH, STREAM_WAIT,
+--   MOVE_STEP/DT, HELI_CLEAR, HELI_TEMPLATE/TEMPLATE.
 
 local Ess = _G.Ess
 if not (Ess and Ess.Object and Ess.Object.spawn and Ess.Loop and Ess.Player and Ess.Easy and Ess.Easy.Vehicle) then
@@ -25,16 +25,17 @@ end
 local HELI_TEMPLATE = "AH1Z"
 local TEMPLATE = "Cash (Large)"
 local ROW_N, STEP = 12, 32              -- ROW_N boxes STEP apart -> stripe width, spanning +Z from START_Z
-local START_X, START_Z = 3461, -3636    -- your start point (edit per pass; +Z shift = ROW_N*STEP)
-local START_GROUND = 472                -- ground height AT the start (seeds the follower) -- you gave 472
-local LENGTH = 8204                     -- fly this far +X then stop
+local START_X, START_Z = 3461, -3636    -- start point (edit per pass; +Z shift = ROW_N*STEP)
+local START_GROUND = 472                -- ground height AT the start (seeds the follower)
+local SWEEP_DIR = -1                    -- -1 sweeps -X (INTO the map from the +X corner); +1 sweeps +X
+local LENGTH = 8204                     -- fly this far along SWEEP_DIR*X then stop
 local STREAM_WAIT = 10.0                -- fixed wait after teleport for streaming before summoning the heli
 local MOVE_STEP = 16                    -- heli forward step per tick (small = slow/streaming-safe)
-local SETPOINT = 90                     -- keep the box row ~this far above terrain (well inside the ~155 ray)
+local SETPOINT = 90                     -- keep each box ~this far above its terrain (well inside the ~155 ray)
 local SENTINEL_H = 150                  -- a reading is valid only if hAbove is in (2, SENTINEL_H)
-local SEARCH = 90                       -- when a column reads nothing, step the altitude guess to refind ground
-local HELI_CLEAR = 60                   -- heli rides this far above the box row
-local GUESS_LO, GUESS_HI = -60, 700     -- clamp the follower's ground guess to sane map elevations
+local SEARCH = 90                       -- when a box loses the ground, step its altitude this much to refind it
+local HELI_CLEAR = 60                   -- heli rides this far above the row's median altitude
+local GUESS_LO, GUESS_HI = -60, 700     -- clamp a box's altitude guess to sane map elevations
 local DT = 0.25
 
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
@@ -60,11 +61,11 @@ end
 if not Ess.Player.character(0) then Ess.Log("[helimap] no player character"); return end
 
 local rowCenterZ = START_Z + (ROW_N - 1) * STEP / 2
-HM.on, HM.total, HM.heli, HM.row = true, 0, nil, {}
-HM.curX, HM.guess, HM.retry = START_X, START_GROUND, 0
+HM.on, HM.total, HM.heli, HM.row, HM.bg = true, 0, nil, {}, {}
+HM.curX = START_X
 HM.phase, HM.wait = "spawn", STREAM_WAIT
 
--- the ONE and ONLY player teleport: to the start, safely ABOVE its ground so we don't land inside a mountain.
+-- the ONE and ONLY player teleport: to the start, safely ABOVE its ground so we don't land inside terrain.
 if Ess.Player.teleport then pcall(Ess.Player.teleport, START_X, START_GROUND + 40, rowCenterZ, 0) end
 Ess.Log(string.format("[helimap] teleported to (%.0f,%.0f) ground~%.0f; waiting %.0fs for streaming...", START_X, START_Z, START_GROUND, STREAM_WAIT))
 
@@ -79,57 +80,50 @@ Ess.Loop.start("HeliMap", DT, function()
         if char and Ess.Vehicle and Ess.Vehicle.seatOf and not Ess.Vehicle.seatOf(char) and Ess.Vehicle.enterBestSeat then pcall(Ess.Vehicle.enterBestSeat, char, HM.heli) end
         if char and Ess.Vehicle and Ess.Vehicle.seatOf and not Ess.Vehicle.seatOf(char) then Ess.Log("[helimap] WARNING: player not seated -- raise STREAM_WAIT.") end
         pcall(Object.DisablePhysics, HM.heli)                 -- kinematic: SetPosition can't crash it into terrain
-        pcall(Object.SetPosition, HM.heli, START_X, HM.guess + SETPOINT + HELI_CLEAR, rowCenterZ)
+        pcall(Object.SetYaw, HM.heli, (SWEEP_DIR > 0) and -90 or 90)   -- face the flight direction (cosmetic)
+        pcall(Object.SetPosition, HM.heli, START_X, START_GROUND + SETPOINT + HELI_CLEAR, rowCenterZ)
         for i = 0, ROW_N - 1 do
-            local u = Ess.Object.spawn(TEMPLATE, START_X, HM.guess + SETPOINT, START_Z + i * STEP, 0)
-            if u then pcall(Object.DisablePhysics, u); HM.row[#HM.row + 1] = u end
+            local u = Ess.Object.spawn(TEMPLATE, START_X, START_GROUND + SETPOINT, START_Z + i * STEP, 0)
+            if u then pcall(Object.DisablePhysics, u); HM.row[#HM.row + 1] = u; HM.bg[#HM.row] = START_GROUND end
         end
         if #HM.row == 0 then HM.on = false; cleanup(); Ess.Log("[helimap] box spawn failed -- TEMPLATE valid?"); return false end
         wsline("<<ROADLOG>>START")
-        Ess.Log(string.format("[helimap] terrain-follow sweep +X for %d, z[%.0f..%.0f]. F6 aborts.", LENGTH, START_Z, START_Z + (ROW_N - 1) * STEP))
+        Ess.Log(string.format("[helimap] per-box terrain-follow, sweep %sX for %d, z[%.0f..%.0f] (%d boxes). F6 aborts.",
+            SWEEP_DIR > 0 and "+" or "-", LENGTH, START_Z, START_Z + (ROW_N - 1) * STEP, #HM.row))
         HM.phase = "fly"
         return true
     end
 
-    -- fly: position the row at the follower altitude, read, then either advance (got terrain) or search (lost it)
+    -- fly: each box follows its OWN column's terrain height (independent altitude)
     if not (HM.heli and Ess.Object.valid(HM.heli)) then HM.on = false; cleanup(); Ess.Log("[helimap] lost the heli"); return false end
-    local boxAlt = HM.guess + SETPOINT
-    for i = 1, #HM.row do if Ess.Object.valid(HM.row[i]) then pcall(Object.SetPosition, HM.row[i], HM.curX, boxAlt, START_Z + (i - 1) * STEP) end end
-    pcall(Object.SetPosition, HM.heli, HM.curX, boxAlt + HELI_CLEAR, rowCenterZ)
-
-    local grounds, hs = {}, {}
+    local alts = {}
     for i = 1, #HM.row do
         local u = HM.row[i]
         if Ess.Object.valid(u) then
-            local okp, x, y, z = pcall(Object.GetPosition, u)
+            local z = START_Z + (i - 1) * STEP
+            pcall(Object.SetPosition, u, HM.curX, HM.bg[i] + SETPOINT, z)
+            local okp, x, y, zz = pcall(Object.GetPosition, u)
             local okh, h = pcall(Object.GetHeightAboveTerrain, u)
             if okp and x and okh and h then
-                hs[#hs + 1] = h
-                if h > 2 and h < SENTINEL_H then grounds[#grounds + 1] = { x = x, z = z, g = y - h } end
+                if h > 2 and h < SENTINEL_H then
+                    local g = y - h
+                    HM.bg[i] = g
+                    HM.total = HM.total + 1
+                    wsline(string.format("<<ROADLOG>>DOT %.2f,%.2f,%.2f,0.0", x, g, zz))
+                    Ess.Log(string.format("[TERRAIN] %d  x=%.2f  y=%.2f  z=%.2f  yaw=0.0", HM.total, x, g, zz))
+                elseif h >= SENTINEL_H then HM.bg[i] = clamp(HM.bg[i] - SEARCH, GUESS_LO, GUESS_HI)   -- box too high above terrain
+                else HM.bg[i] = clamp(HM.bg[i] + SEARCH, GUESS_LO, GUESS_HI) end                     -- box at/under terrain
             end
         end
+        alts[#alts + 1] = HM.bg[i]
     end
+    pcall(Object.SetPosition, HM.heli, HM.curX, (median(alts) or START_GROUND) + SETPOINT + HELI_CLEAR, rowCenterZ)
 
-    if #grounds > 0 then                              -- got the terrain: emit + follow it, advance a column
-        local gy = {}
-        for _, p in ipairs(grounds) do
-            HM.total = HM.total + 1; gy[#gy + 1] = p.g
-            wsline(string.format("<<ROADLOG>>DOT %.2f,%.2f,%.2f,0.0", p.x, p.g, p.z))
-            Ess.Log(string.format("[TERRAIN] %d  x=%.2f  y=%.2f  z=%.2f  yaw=0.0", HM.total, p.x, p.g, p.z))
-        end
-        HM.guess, HM.retry = median(gy), 0
-        HM.curX = HM.curX + MOVE_STEP
-        if HM.curX - START_X >= LENGTH then
-            HM.on = false; cleanup(); wsline("<<ROADLOG>>STOP " .. HM.total)
-            Ess.Log(string.format("[helimap] stripe done -- %d terrain point(s). Set START_Z += %d and rerun.", HM.total, ROW_N * STEP))
-            return false
-        end
-    else                                              -- lost the ground (cliff): search the altitude, don't advance
-        local mh = median(hs)
-        if mh and mh >= SENTINEL_H then HM.guess = clamp(HM.guess - SEARCH, GUESS_LO, GUESS_HI)   -- too high above terrain
-        else HM.guess = clamp(HM.guess + SEARCH, GUESS_LO, GUESS_HI) end                          -- at/under terrain
-        HM.retry = HM.retry + 1
-        if HM.retry > 24 then HM.curX = HM.curX + MOVE_STEP; HM.retry = 0 end                     -- give up on this column
+    HM.curX = HM.curX + SWEEP_DIR * MOVE_STEP
+    if math.abs(HM.curX - START_X) >= LENGTH then
+        HM.on = false; cleanup(); wsline("<<ROADLOG>>STOP " .. HM.total)
+        Ess.Log(string.format("[helimap] stripe done -- %d terrain point(s). Set START_Z += %d and rerun.", HM.total, ROW_N * STEP))
+        return false
     end
     return true
 end)
