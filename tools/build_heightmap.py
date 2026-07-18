@@ -24,10 +24,22 @@ RX = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cell", type=int, default=32, help="grid cell size in world units")
+    ap.add_argument("--ymin", type=float, default=-100.0, help="drop samples below this y (fell through the world)")
+    ap.add_argument("--ymax", type=float, default=250.0, help="drop samples above this y (real terrain/roofs are < ~71)")
     args = ap.parse_args()
     cell = max(1, args.cell)
 
-    buckets = {}   # (cx, cz) -> [y, ...]
+    # The PMC HQ interior is an off-map instanced pocket near (x 3794, z -3911) at y ~450 -- exiting drops you
+    # somewhere else entirely (~2558,-13,-924). Any sample inside it is a fake corner spike, so drop high-y
+    # samples in that corner. (The generic --ymax also catches it; this is the precise regional guard.)
+    def keep(x, y, z):
+        if y < args.ymin or y > args.ymax:
+            return False
+        if y > 150 and math.hypot(x - 3794.0, z - (-3911.0)) < 500.0:   # HQ interior instance
+            return False
+        return True
+
+    buckets, dropped = {}, 0   # (cx, cz) -> [y, ...]
     files = sorted(glob.glob(str(LOGS_DIR / "*.log")))
     for f in files:
         for line in open(f, encoding="utf-8", errors="ignore"):
@@ -35,6 +47,9 @@ def main():
             if not m:
                 continue
             x, y, z = float(m.group(1)), float(m.group(2)), float(m.group(3))
+            if not keep(x, y, z):
+                dropped += 1
+                continue
             buckets.setdefault((math.floor(x / cell), math.floor(z / cell)), []).append(y)
 
     if not buckets:
@@ -65,6 +80,9 @@ def main():
         encoding="utf-8")
     print("[heightmap] %d samples -> %d cells (cell=%d), y %.1f..%.1f, from %d log(s): %s"
           % (n, len(cells), cell, data["yMin"], data["yMax"], len(files), ", ".join(data["logs"])))
+    if dropped:
+        print("[heightmap] dropped %d out-of-range sample(s) (HQ interior / fell-through / y<%.0f or y>%.0f)"
+              % (dropped, args.ymin, args.ymax))
 
 
 if __name__ == "__main__":
