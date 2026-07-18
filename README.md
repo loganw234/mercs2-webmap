@@ -26,6 +26,10 @@ by the game's own lua-bridge at `http://127.0.0.1:27050/`.
   the lua-bridge WebSocket (`127.0.0.1:27050`) and draws a heading arrow where player 0 is standing, a few
   times a second. It's entirely opt-in: everything else works with no game and no connection. Chrome shows a
   one-time prompt to allow the local connection; opening the page over `https` or from disk both work.
+- **Update check** — the *downloaded* (and bridge-served) copy quietly asks GitHub about once a day whether
+  a newer build exists (its git commit is stamped in at build time) and offers the release download in a
+  dismissible bar. The hosted Pages copy is always current, so it never checks. Offline? Nothing happens.
+  "Skip this one" silences that particular version for good.
 
 ## How the map lines up
 
@@ -62,11 +66,15 @@ src/
   lib/ess-bridge.js          the browser<->lua-bridge WebSocket client (copied from mercs2-lua-essentials)
   data/map-image.js          window.MERCS_MAP_IMAGE = downscaled map as a data: URI  (generated, committed)
   data/collectibles.js       window.MERCS_DATASETS  = the built-in toolbox layer     (generated, committed)
+  data/teleports.js          the shared teleport-spot layer (curated via Export)
   app/00_state.js            shared WM namespace + the map calibration
   app/10_map.js              Leaflet CRS.Simple init + world<->latLng transform
   app/20_layers.js           the generic dataset -> layers loader + panel/legend
+  app/24_collected.js        collect-tracking ticks (localStorage) + hide/reset
+  app/26_teleport.js         teleport spots: save current / paste import / export / jump
   app/30_live.js             the optional live-player WS overlay
   app/40_ui.js               panel wiring (collapse, load-json, follow, connect)
+  app/80_update.js           the once-a-day update check for downloaded copies
   app/99_main.js             boot
 tools/gen_map_image.py       downscale + base64 the source map into src/data/map-image.js
 ```
@@ -76,4 +84,5 @@ tools/gen_map_image.py       downscale + base64 the source map into src/data/map
 - The **lua-bridge** running with WebSocket support on `127.0.0.1:27050` (the same bridge the web IDE uses).
 - The **Essentials framework** loaded in-game (the overlay polls `Ess.Player.pose(0)`).
 
-The overlay only ever *reads* position; it never sends game-changing commands.
+The overlay itself only ever *reads* position. The one thing that writes to the game is the **⇱ Teleport
+here** button — and only when you click it.
