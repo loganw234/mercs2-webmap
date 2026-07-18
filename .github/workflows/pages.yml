@@ -27,6 +27,8 @@ jobs:
       - name: Merge src/ into the standalone page
         run: python build.py   # map-image.js + collectibles.js are committed, so no PIL/source map needed here
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true    # self-enable Pages (build type = Actions) so no manual Settings toggle is needed
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
