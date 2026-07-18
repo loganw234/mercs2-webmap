@@ -96,6 +96,29 @@
     var hmToggle = $("hmToggle");
     if (hmToggle) hmToggle.addEventListener("change", function (e) { WM.setHeightmapVisible(e.target.checked); });
 
+    // ---- mapping session (telemetry-driven; buttons just export/clear the collected trail) ----
+    var mapExportPane = $("mapExportPane"), mapExportText = $("mapExportText");
+    var mapExport = $("mapExportBtn");
+    if (mapExport) mapExport.addEventListener("click", function () {
+      if (!WM.mapping || !WM.mapping.count()) { alert("No samples yet — run RoadLogger.lua (F11) in-game while connected."); return; }
+      if (mapExportText) mapExportText.value = WM.mapping.exportLog();
+      if (mapExportPane) { mapExportPane.hidden = !mapExportPane.hidden; if (!mapExportPane.hidden && mapExportText) { mapExportText.focus(); mapExportText.select(); } }
+    });
+    var mapClear = $("mapClearBtn");
+    if (mapClear) mapClear.addEventListener("click", function () {
+      if (WM.mapping && WM.mapping.count() && !window.confirm("Clear this session's " + WM.mapping.count() + " mapped samples?")) return;
+      if (WM.mapping) WM.mapping.clear();
+      if (mapExportPane) mapExportPane.hidden = true;
+    });
+    var mapCopy = $("mapCopyBtn");
+    if (mapCopy) mapCopy.addEventListener("click", function () {
+      if (!mapExportText) return;
+      mapExportText.select();
+      var ok = function () { mapCopy.textContent = "Copied ✓"; setTimeout(function () { mapCopy.textContent = "Copy"; }, 1200); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(mapExportText.value).then(ok, function () { try { document.execCommand("copy"); ok(); } catch (e) {} }); return; } } catch (e) {}
+      try { document.execCommand("copy"); ok(); } catch (e) {}
+    });
+
     // ---- "Teleport to all" toggle (with the obligatory ceremony) ----
     var tpAll = $("tpAllToggle");
     if (tpAll) {

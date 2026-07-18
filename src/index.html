@@ -39,6 +39,20 @@
         <p class="hint">Any JSON array of <code>{position:{x,y,z}}</code> points drops in as a new layer.</p>
       </section>
 
+      <section id="mapSection" hidden>
+        <h2>Mapping <span id="mapDot" class="dot closed" title="road logger telemetry"></span></h2>
+        <p class="hint" id="mapCount">0 samples</p>
+        <div class="tp-tool-row">
+          <button type="button" id="mapExportBtn" class="btn secondary small">Export .log</button>
+          <button type="button" id="mapClearBtn" class="btn secondary small">Clear</button>
+        </div>
+        <div id="mapExportPane" class="tp-pane" hidden>
+          <textarea id="mapExportText" rows="5" readonly></textarea>
+          <div class="tp-tool-row"><button type="button" id="mapCopyBtn" class="btn small">Copy</button></div>
+          <p class="hint">Save as <code>data/SessionN.log</code>, then run <code>python tools/build_heightmap.py</code> &amp; <code>build.py</code>.</p>
+        </div>
+      </section>
+
       <section id="hmSection" hidden>
         <h2>Heightmap</h2>
         <label class="chk small"><input type="checkbox" id="hmToggle"> Show elevation overlay</label>

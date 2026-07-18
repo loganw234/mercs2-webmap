@@ -57,7 +57,9 @@
 
   // hidden-channel telemetry: our pose lines are un-tagged (run()'s tagged results are consumed before this).
   function onData(line) {
-    if (!line || line.indexOf(TAG) !== 0) return;
+    if (!line) return;
+    if (WM.onRoadLog && line.indexOf("<<ROADLOG>>") === 0) { WM.onRoadLog(line); return; }   // mapping telemetry
+    if (line.indexOf(TAG) !== 0) return;
     var p = line.slice(TAG.length).split(",");
     var x = parseFloat(p[0]), y = parseFloat(p[1]), z = parseFloat(p[2]);
     if (isFinite(x) && isFinite(z)) showPose(x, isFinite(y) ? y : 0, z);

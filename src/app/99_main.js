@@ -11,6 +11,7 @@
     built.forEach(function (ds) { try { WM.addDataset(ds); } catch (e) { /* one bad dataset shouldn't kill the map */ } });
     if (WM.teleports) { try { WM.teleports.init(); } catch (e) {} }   // built-in + localStorage spots -> the teleport layer
     if (WM.initHeightmap) { try { WM.initHeightmap(); } catch (e) {} }   // ground-height grid: query + elevation overlay
+    if (WM.initMapping) { try { WM.initMapping(); } catch (e) {} }   // telemetry-driven mapping trail (restores a saved session)
     WM.renderLayerPanel();
     WM.renderLegend();
     if (WM.updateProgress) WM.updateProgress();
