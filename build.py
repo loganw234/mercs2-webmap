@@ -11,10 +11,23 @@ requests. That one file works three ways:
 Edit files under src/ (regenerate the map with tools/gen_map_image.py or the data with the JSON), then
 re-run:  python build.py
 """
+import json
 import pathlib
+import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent
 SRC = ROOT / "src"
+
+
+def build_info():
+    """The build's identity: the git commit it was built from. The downloaded copy compares this against
+    the repo's current HEAD (80_update.js) to offer updates. Falls back to "dev" outside a git checkout."""
+    try:
+        sha = subprocess.check_output(["git", "rev-parse", "--short=7", "HEAD"], cwd=ROOT, text=True).strip()
+        date = subprocess.check_output(["git", "show", "-s", "--format=%cI", "HEAD"], cwd=ROOT, text=True).strip()
+        return {"sha": sha, "date": date}
+    except Exception:
+        return {"sha": "dev", "date": ""}
 
 
 def guard(s):
@@ -52,6 +65,7 @@ def main():
             .replace("/*__LEAFLET_JS__*/", guard(leaflet_js))
             .replace("/*__BRIDGE__*/", guard(bridge))
             .replace("/*__DATA__*/", guard(data))
+            .replace("/*__BUILD__*/", "window.WM_BUILD=" + json.dumps(build_info()) + ";")
             .replace("/*__APP__*/", guard(app)))
 
     out = ROOT / "dist" / "index.html"

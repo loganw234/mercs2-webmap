@@ -108,3 +108,12 @@ html,body{ margin:0; height:100%; background:var(--bg); color:var(--ink);
   border-radius:6px; padding:6px 8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; resize:vertical; }
 
 @media (max-width:640px){ .panel{ width:calc(100% - 24px); max-height:52%; } }
+
+/* ---- update bar (downloaded/bridge-served copies only -- 80_update.js) ---- */
+.updbar{ position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600;
+  display:flex; align-items:center; gap:10px; padding:7px 12px; font-size:12px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+  box-shadow:0 6px 20px rgba(0,0,0,.4); max-width:calc(100% - 24px); }
+.updbar[hidden]{ display:none; }
+.updx{ font:15px/1 ui-monospace,monospace; color:var(--muted); background:transparent; border:0; cursor:pointer; padding:2px 4px; }
+.updx:hover{ color:var(--ink); }

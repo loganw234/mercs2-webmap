@@ -9,6 +9,13 @@
 <style>/*__CSS__*/</style>
 
 <div id="app">
+  <div id="updbar" class="updbar" hidden>
+    <span>A newer build of the map is available.</span>
+    <a class="btn small" id="updGet" href="https://github.com/loganw234/mercs2-webmap/releases/latest/download/mercs2-webmap.html" download>⬇ Download the update</a>
+    <button type="button" class="btn secondary small" id="updSkip" title="Don't mention this version again">Skip this one</button>
+    <button type="button" class="updx" id="updClose" title="Dismiss">×</button>
+  </div>
+
   <div id="map"></div>
 
   <aside id="panel" class="panel">
@@ -79,4 +86,5 @@
 <script>/*__LEAFLET_JS__*/</script>
 <script>/*__BRIDGE__*/</script>
 <script>/*__DATA__*/</script>
+<script>/*__BUILD__*/</script>
 <script>/*__APP__*/</script>
