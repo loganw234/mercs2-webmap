@@ -40,6 +40,14 @@
       S.samples.push(s); S.last = s;
       addLL(x, z, jumped); saveSoon(); panel();
     },
+    // a scattered probe point (GridProbe): a sample + an unconnected dot, NOT part of the driven trail line.
+    onDot: function (x, y, z) {
+      if (!S.active) S.active = true;
+      S.samples.push({ x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, z: Math.round(z * 100) / 100 });
+      S.last = null; S.cur = null;   // don't let the next trail point draw a line to/from a probe dot
+      L.circleMarker(WM.worldToLatLng(x, z), { radius: 3, color: "#0006", weight: 1, fillColor: "#ffd24a", fillOpacity: 0.85, interactive: false }).addTo(group());
+      saveSoon(); panel();
+    },
     count: function () { return S.samples.length; },
     clear: function () { S.samples = []; S.dist = 0; S.last = null; S.cur = null; S.active = false; if (S.trail) { WM.map.removeLayer(S.trail); S.trail = null; } save(); panel(); },
     exportLog: function () {
@@ -56,6 +64,11 @@
     if (rest.indexOf("PT ") === 0) {
       var p = rest.slice(3).split(","), x = parseFloat(p[0]), y = parseFloat(p[1]), z = parseFloat(p[2]);
       if (isFinite(x) && isFinite(z)) mapping.onPoint(x, isFinite(y) ? y : 0, z);
+      return;
+    }
+    if (rest.indexOf("DOT ") === 0) {   // GridProbe scattered points
+      var q = rest.slice(4).split(","), dx = parseFloat(q[0]), dy = parseFloat(q[1]), dz = parseFloat(q[2]);
+      if (isFinite(dx) && isFinite(dz)) mapping.onDot(dx, isFinite(dy) ? dy : 0, dz);
     }
   };
 
