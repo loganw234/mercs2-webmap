@@ -21,6 +21,11 @@
       <section>
         <h2>Layers</h2>
         <div id="layerList" class="rows"></div>
+        <div id="collectedControls" class="collected-controls" hidden>
+          <span id="collectedOverall" class="collected-overall"></span>
+          <label class="chk small"><input type="checkbox" id="hideCollected"> Hide collected</label>
+          <button type="button" id="resetCollected" class="btn secondary small">Reset ticks</button>
+        </div>
         <label class="fileBtn">＋ Load JSON layer…
           <input type="file" id="loadJson" accept=".json,application/json" hidden>
         </label>

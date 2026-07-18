@@ -23,6 +23,7 @@
       if (!p.hasOwnProperty(k) || k === "position" || k === "x" || k === "y" || k === "z") continue;
       s += "<br><span class='k'>" + esc(k) + "</span>: " + esc(String(p[k]));
     }
+    s += "<div class='wm-pop-actions'><button type='button' class='wm-collect'>☐ Mark collected</button></div>";
     return s;
   }
 
@@ -51,22 +52,27 @@
       var pts = buckets[key];
       var color = ds.colors[key] || PALETTE[colorSeq++ % PALETTE.length];
       var label = ds.labels[key] || (key === "_all" ? ds.name : key);
-      var lg = L.layerGroup(), placed = 0, first = null;
-      pts.forEach(function (p) {
+      var lg = L.layerGroup(), placed = 0, first = null, markers = [];
+      pts.forEach(function (p, idx) {
         var pos = posOf(p); if (!pos) return;
         var ll = WM.worldToLatLng(pos.x, pos.z); if (!first) first = ll;
         var m = L.circleMarker(ll, { radius: 5, color: "#0008", weight: 1, fillColor: color, fillOpacity: 0.9 });
+        m._wmKey = entry.id + ":" + (p.entity_id || p.id || ("#" + idx));   // stable per-point id for collected ticks
+        m._wmColor = color; m._wmLayer = lg;
         m.bindPopup(popupHtml(label, p, pos));
         m.bindTooltip(label, { direction: "top", opacity: 0.9 });
-        lg.addLayer(m); placed++;
+        if (WM.applyCollectedStyle) WM.applyCollectedStyle(m);   // dim if already ticked off
+        lg.addLayer(m); markers.push(m); placed++;
       });
       lg.addTo(WM.map);
-      entry.groups[key] = { layer: lg, color: color, label: label, count: placed, visible: true, sample: first };
+      entry.groups[key] = { layer: lg, color: color, label: label, count: placed, visible: true, sample: first, markers: markers };
     });
 
     WM.datasets.push(entry);
+    if (WM.hideCollected && WM.setHideCollected) WM.setHideCollected(true);   // hide any already-collected in a newly loaded layer
     WM.renderLayerPanel();
     WM.renderLegend();
+    if (WM.updateProgress) WM.updateProgress();
     return entry;
   };
 
@@ -101,11 +107,12 @@
       Object.keys(d.groups).forEach(function (key) {
         var g = d.groups[key];
         var name = (Object.keys(d.groups).length > 1) ? (d.name + " · " + g.label) : g.label;
+        var done = WM.groupCollected ? WM.groupCollected(g) : 0;
         var row = document.createElement("label");
         row.className = "row";
         row.innerHTML = "<input type='checkbox'" + (g.visible ? " checked" : "") + ">"
           + "<span class='swatch' style='background:" + g.color + "'></span>"
-          + "<span class='name'>" + esc(name) + "</span><span class='count'>" + g.count + "</span>";
+          + "<span class='name'>" + esc(name) + "</span><span class='count'>" + done + "/" + g.count + "</span>";
         row.querySelector("input").addEventListener("change", function (e) { WM.setGroupVisible(d.id, key, e.target.checked); WM.renderLegend(); });
         host.appendChild(row);
       });

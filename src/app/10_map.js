@@ -37,6 +37,7 @@
       crs: L.CRS.Simple,
       minZoom: -6, maxZoom: 3, zoomSnap: 0.25, wheelPxPerZoomLevel: 120,
       attributionControl: false, zoomControl: true,
+      preferCanvas: true,   // render the ~100 markers + the moving player dot on one canvas -- much cheaper than SVG
     });
     WM.map = map;
 

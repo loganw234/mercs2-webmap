@@ -19,6 +19,18 @@
     var follow = $("followChk");
     if (follow) follow.addEventListener("change", function (e) { WM.follow = e.target.checked; });
 
+    var hide = $("hideCollected");
+    if (hide) hide.addEventListener("change", function (e) { WM.setHideCollected(e.target.checked); });
+
+    var reset = $("resetCollected");
+    if (reset) reset.addEventListener("click", function () {
+      if (window.confirm("Clear all collected ticks?")) {
+        if (hide) hide.checked = false;
+        WM.hideCollected = false;
+        WM.resetCollected();
+      }
+    });
+
     var file = $("loadJson");
     if (file) file.addEventListener("change", function (e) {
       var f = e.target.files && e.target.files[0]; if (!f) return;
