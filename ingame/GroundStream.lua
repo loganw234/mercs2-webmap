@@ -5,13 +5,13 @@ local KEYVAL = "f5"   -- toggle key (add "GroundStream.lua=f5" under [OnKey])
 -- swath, not a single line. Streams <<GROUND>>x,y,z,dist per probe; ground-gather.html turns each into a
 -- terrain point. Fly LOW: GetHeightAboveTerrain reaches ~155u down.
 --
--- The weld: spawn each probe at its grid offset, WAIT ATTACH_DELAY for the fresh spawn's transform to init
--- (attaching immediately silently no-ops -> "doesn't stick"), snap it to the heli's CURRENT pos + offset,
--- then Object.Attach so it rides along. The prop MUST weld rigidly: "Verification Camera" sticks; physics
--- props like "Cash (Large)" don't.
+-- The weld: Object.Attach snaps every child's ORIGIN to the hardpoint (they all pile up at the heli centre),
+-- so the grid offset has to be re-applied AFTER attaching -- via Object.SetPositionToObject with a per-probe
+-- offset. (Fresh spawns also need a moment before their transform is ready, hence ATTACH_DELAY.) The prop must
+-- weld rigidly: "Verification Camera" sticks; physics props like "Cash (Large)" don't.
 --
--- ★ TUNE: GRID_N x SPACING = swath width; TEMPLATE; ATTACH_DELAY; HARDPOINT (anchor -- the per-probe offset
---   is what actually spaces the grid).
+-- ★ TUNE: GRID_N x SPACING = swath width; TEMPLATE; HARDPOINT (a confirmed rigid anchor on the vehicle);
+--   ATTACH_DELAY; OFF_Y (drop the grid this far below the hardpoint if you want).
 
 local Ess = _G.Ess
 if not (Ess and Ess.Player and Ess.Loop and Ess.Object) then
@@ -20,10 +20,10 @@ if not (Ess and Ess.Player and Ess.Loop and Ess.Object) then
 end
 
 local LOOP_ID, INTERVAL, SENTINEL = "GroundStream", 0.2, 150
-local GRID_N, SPACING = 5, 32          -- GRID_N x GRID_N probes SPACING apart -> a (GRID_N-1)*SPACING-wide swath
-local TEMPLATE = "Verification Camera" -- welds rigidly (physics props like "Cash (Large)" don't stick)
-local HARDPOINT = ""                   -- attach anchor; the per-probe spawn offset is what spaces the grid
-local ATTACH_DELAY = 0.5               -- let each fresh probe's transform init before attaching (~0.3s min)
+local GRID_N, SPACING = 5, 32                  -- GRID_N x GRID_N probes SPACING apart -> a (GRID_N-1)*SPACING swath
+local TEMPLATE = "Verification Camera"         -- welds rigidly (physics props like "Cash (Large)" don't stick)
+local HARDPOINT = "prop_gen_part_p6snf8"       -- confirmed rigid-weld anchor on the heli (Logan)
+local ATTACH_DELAY, OFF_Y = 0.5, 0             -- fresh transforms need ~0.3s; OFF_Y drops the grid below the anchor
 
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
 
@@ -53,15 +53,15 @@ S.on, S.n, S.probes, S.offsets, S.attached, S.wait = true, 0, {}, {}, false, ATT
 local okp, ppx, ppy, ppz = pcall(Object.GetPosition, S.parent)
 if not (okp and ppx) then ppx, ppy, ppz = x, y, z end
 
+-- spawn all probes at the parent; the per-probe offset is applied after they're welded
 local half = (GRID_N - 1) / 2
 for i = 0, GRID_N - 1 do
     for j = 0, GRID_N - 1 do
-        local ox, oz = (i - half) * SPACING, (j - half) * SPACING
-        local u = Ess.Object.spawn(TEMPLATE, ppx + ox, ppy, ppz + oz, 0)
+        local u = Ess.Object.spawn(TEMPLATE, ppx, ppy, ppz, 0)
         if u then
             pcall(Object.DisablePhysics, u)
             S.probes[#S.probes + 1] = u
-            S.offsets[#S.probes] = { ox = ox, oz = oz }
+            S.offsets[#S.probes] = { ox = (i - half) * SPACING, oz = (j - half) * SPACING }
         end
     end
 end
@@ -72,18 +72,17 @@ Ess.Log(string.format("[groundstream] STARTED -- %d probes (%dx%d @ %du, %du swa
 Ess.Loop.start(LOOP_ID, INTERVAL, function()
     if not S.on then return false end
 
-    if not S.attached then                       -- wait for transforms, then snap-to-grid + weld the whole set
+    if not S.attached then                       -- transforms ready: weld each, THEN push it out to its grid offset
         S.wait = S.wait - INTERVAL
         if S.wait > 0 then return true end
-        local okc, cx, cy, cz = pcall(Object.GetPosition, S.parent)
         for k, u in ipairs(S.probes) do
             if Ess.Object.valid(u) then
-                if okc and cx then pcall(Object.SetPosition, u, cx + S.offsets[k].ox, cy, cz + S.offsets[k].oz) end
-                pcall(Object.Attach, S.parent, HARDPOINT, u)
+                pcall(Object.Attach, S.parent, HARDPOINT, u)                                            -- rigid weld (-> hardpoint)
+                pcall(Object.SetPositionToObject, u, S.parent, HARDPOINT, S.offsets[k].ox, OFF_Y, S.offsets[k].oz)  -- offset from it
             end
         end
         S.attached = true
-        Ess.Log("[groundstream] probes welded; streaming.")
+        Ess.Log("[groundstream] probes welded + offset; streaming.")
         return true
     end
 
