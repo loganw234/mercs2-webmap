@@ -49,7 +49,7 @@
     return WM._hmRenderer;
   }
 
-  var TIER_OPACITY = { 3: 0.66, 2: 0.54, 1: 0.42 };   // brighter = firmer source: vehicle > foot > grid probe
+  var TIER_OPACITY = { 4: 0.66, 3: 0.56, 2: 0.46, 1: 0.36 };   // brighter = firmer source: vehicle > foot > grid > heli
   function buildOverlay() {
     overlay = L.layerGroup();
     var c = HM.cell, r = renderer();
