@@ -49,15 +49,16 @@
     return WM._hmRenderer;
   }
 
+  var TIER_OPACITY = { 3: 0.66, 2: 0.54, 1: 0.42 };   // brighter = firmer source: vehicle > foot > grid probe
   function buildOverlay() {
     overlay = L.layerGroup();
     var c = HM.cell, r = renderer();
     for (var key in HM.cells) {
       if (!HM.cells.hasOwnProperty(key)) continue;
-      var parts = key.split(","), cx = +parts[0], cz = +parts[1];
+      var parts = key.split(","), cx = +parts[0], cz = +parts[1], cell = HM.cells[key];
       var a = WM.worldToLatLng(cx * c, cz * c), b = WM.worldToLatLng((cx + 1) * c, (cz + 1) * c);
       L.rectangle([[a.lat, a.lng], [b.lat, b.lng]], {
-        stroke: false, fill: true, fillColor: colorFor(HM.cells[key][0]), fillOpacity: 0.62,
+        stroke: false, fill: true, fillColor: colorFor(cell[0]), fillOpacity: TIER_OPACITY[cell[2]] || 0.6,
         interactive: false, renderer: r, pane: "heightmap",
       }).addTo(overlay);
     }
@@ -80,6 +81,6 @@
         + "<div class='hm-scale'><span>" + Math.round(HM.yMin) + "</span><span>height</span><span>" + Math.round(HM.yMax) + "</span></div>";
     }
     var info = document.getElementById("hmInfo");
-    if (info) info.textContent = HM.n + " samples · " + HM.cellCount + " cells · " + HM.cell + "u grid";
+    if (info) info.textContent = HM.n + " samples · " + HM.cellCount + " cells · " + HM.cell + "u grid · brighter = firmer source";
   };
 })();
