@@ -2,20 +2,22 @@ local KEYVAL = "f8"   -- toggle key (add "HeliSweep.lua=f8" under [OnKey]); pres
 
 -- HeliSweep.lua -- automated AREA sweep: the fast, hands-free heightmap probe.
 --
--- It hops a helicopter (a drop platform) across a SWEEP x SWEEP grid of chunks. At each chunk it drops a
--- GRID_N x GRID_N grid of boxes from altitude, lets them settle, reads where they landed (as it does for
--- GridProbe), cleans them up, and moves to the next chunk -- covering a whole region with one keypress.
+-- Hops a helicopter (drop platform) across a SWEEP x SWEEP grid of chunks. Per chunk it TELEPORTS the heli,
+-- WAITS for the new area to stream in, drops a GRID_N x GRID_N box grid from altitude, waits for them to
+-- SETTLE, reads where they landed, cleans them up, and moves on -- a whole region with one keypress (F8;
+-- press again to abort). Never more than one chunk of boxes alive at once (spawn-cap safe).
 --
--- Because the boxes fall from a fixed high altitude over terrain that varies, this is LESS accurate than the
--- hand-driven/walked probes (more bounce/drift), so its samples log as [HELI] and build_heightmap tiers them
--- as the LOWEST authority (vehicle > foot > grid > heli): a heli sample only wins a cell nothing better has
--- reached. Never more than GRID_N*GRID_N boxes exist at once (each chunk is cleaned before the next), so it
--- stays well under the spawn cap. Feeds the live map as <<ROADLOG>>DOT points, same as GridProbe.
+-- ★ The STREAM_WAIT after each teleport is essential: Pg.Spawn into an area that hasn't finished streaming
+--   silently fails for most boxes (Logan's finding -- "only a few spawn"). If a fresh chunk still comes up
+--   sparse, raise STREAM_WAIT.
 --
--- ★ TUNE LIVE:  HELI_TEMPLATE (a spawnable heli; best-effort -- the sweep still runs if it fails to summon),
---   TEMPLATE (a fallable box), DROP_Y (absolute drop altitude -- must clear the tallest terrain in the
---   sweep; real terrain tops out ~70, the HQ instance is ~450, so ~120 is a safe start), SETTLE (from
---   altitude it may need >8s), SWEEP/GRID_N/STEP (coverage vs time; total run ~= SWEEP*SWEEP * SETTLE), OFFSET.
+-- Dropping from a fixed altitude over varied terrain is less accurate (bounce/drift), so its samples log as
+-- [HELI] and build_heightmap tiers them LOWEST (vehicle > foot > grid > heli): a heli sample only wins a cell
+-- nothing better has reached. Feeds the live map as <<ROADLOG>>DOT points, same as GridProbe.
+--
+-- ★ TUNE LIVE:  STREAM_WAIT (raise if chunks spawn sparse), SETTLE (from altitude it may need >8s), DROP_Y
+--   (absolute drop altitude -- must clear the tallest terrain in the sweep; real terrain tops out ~70), SWEEP
+--   /GRID_N/STEP (coverage vs time; run ~= SWEEP*SWEEP * (STREAM_WAIT+SETTLE)), HELI_TEMPLATE/TEMPLATE, OFFSET.
 
 local Ess = _G.Ess
 if not (Ess and Ess.Object and Ess.Object.spawn and Ess.Loop and Ess.Player) then
@@ -23,10 +25,12 @@ if not (Ess and Ess.Object and Ess.Object.spawn and Ess.Loop and Ess.Player) the
     return
 end
 
-local HELI_TEMPLATE = "Little Bird"
-local TEMPLATE       = "BirdBox"
+local HELI_TEMPLATE = "AH1Z"           -- known-good heli (Logan)
+local TEMPLATE       = "Cash (Large)"  -- known-good spawnable prop (Logan)
 local SWEEP, GRID_N, STEP, DROP_Y, SETTLE, OFFSET = 4, 8, 16, 120, 10.0, 0.0
-local CHUNK = GRID_N * STEP    -- chunk spacing == grid width, so chunks tile edge-to-edge
+local STREAM_WAIT = 3.0                -- seconds after teleport for the area to stream in BEFORE dropping
+local CHUNK = GRID_N * STEP            -- chunk spacing == grid width, so chunks tile edge-to-edge
+local DT = 0.5                         -- state-machine tick
 
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
 
@@ -49,24 +53,23 @@ end
 local px, _, pz = Ess.Player.pose(0)
 if not px then Ess.Log("[helisweep] no player character"); return end
 
--- build the SWEEP x SWEEP list of chunk centres around the player
+-- SWEEP x SWEEP chunk centres around the player
 local chunks, halfS = {}, (SWEEP - 1) / 2
 for ix = 0, SWEEP - 1 do
     for iz = 0, SWEEP - 1 do
         chunks[#chunks + 1] = { x = px + (ix - halfS) * CHUNK, z = pz + (iz - halfS) * CHUNK }
     end
 end
-HS.on, HS.chunks, HS.i, HS.total, HS.crates = true, chunks, 1, 0, {}
+HS.on, HS.chunks, HS.i, HS.total, HS.crates, HS.phase, HS.wait = true, chunks, 1, 0, {}, "move", 0
 
 -- summon the drop platform (best-effort; the sweep runs regardless). Physics off so it stays where placed.
-HS.heli = Ess.Easy and Ess.Easy.Vehicle and Ess.Easy.Vehicle.summon and Ess.Easy.Vehicle.summon(HELI_TEMPLATE) or nil
+HS.heli = (Ess.Easy and Ess.Easy.Vehicle and Ess.Easy.Vehicle.summon and Ess.Easy.Vehicle.summon(HELI_TEMPLATE)) or nil
 if HS.heli and Ess.Object.valid(HS.heli) then
     pcall(Object.DisablePhysics, HS.heli)
     if Ess.Object.setInvincible then Ess.Object.setInvincible(HS.heli, true, "HeliSweep") end
 end
 
 local function dropChunk(c)
-    if HS.heli and Ess.Object.valid(HS.heli) then pcall(Object.SetPosition, HS.heli, c.x, DROP_Y + 8, c.z) end
     HS.crates = {}
     local half = (GRID_N - 1) / 2
     for ix = 0, GRID_N - 1 do
@@ -93,21 +96,34 @@ local function readChunk()
 end
 
 wsline("<<ROADLOG>>START")
-dropChunk(chunks[1])   -- drop the first chunk; the loop reads it after it settles, then advances
-Ess.Log(string.format("[helisweep] %dx%d chunks (%du), %dx%d boxes each, settle %.1fs -- ~%.0fs total. F8 to abort.",
-    SWEEP, SWEEP, CHUNK, GRID_N, GRID_N, SETTLE, SWEEP * SWEEP * SETTLE))
+Ess.Log(string.format("[helisweep] %dx%d chunks (%du), %dx%d boxes, wait %.1fs + settle %.1fs -- ~%.0fs total. F8 aborts.",
+    SWEEP, SWEEP, CHUNK, GRID_N, GRID_N, STREAM_WAIT, SETTLE, SWEEP * SWEEP * (STREAM_WAIT + SETTLE)))
 
-Ess.Loop.start("HeliSweep", SETTLE, function()
+-- per chunk: move (teleport) -> wait STREAM_WAIT -> drop -> wait SETTLE -> read -> next chunk
+Ess.Loop.start("HeliSweep", DT, function()
     if not HS.on then return false end
-    readChunk()                        -- read the chunk that just settled
-    HS.i = HS.i + 1
-    if HS.i > #HS.chunks then           -- sweep complete
-        HS.on = false
-        if HS.heli and Ess.Object.valid(HS.heli) then pcall(Object.Remove, HS.heli) end
-        wsline("<<ROADLOG>>STOP " .. HS.total)
-        Ess.Log(string.format("[helisweep] done -- %d probe(s) across %d chunks.", HS.total, #HS.chunks))
-        return false
+    if HS.wait > 0 then HS.wait = HS.wait - DT; return true end     -- still waiting out a phase
+
+    if HS.phase == "move" then
+        local c = HS.chunks[HS.i]
+        if HS.heli and Ess.Object.valid(HS.heli) then pcall(Object.SetPosition, HS.heli, c.x, DROP_Y + 8, c.z) end
+        HS.phase, HS.wait = "drop", STREAM_WAIT                     -- let the area stream in before dropping
+        return true
+    elseif HS.phase == "drop" then
+        dropChunk(HS.chunks[HS.i])
+        HS.phase, HS.wait = "read", SETTLE                         -- let them fall + settle
+        return true
+    else -- read
+        readChunk()
+        HS.i = HS.i + 1
+        if HS.i > #HS.chunks then                                   -- sweep complete
+            HS.on = false
+            if HS.heli and Ess.Object.valid(HS.heli) then pcall(Object.Remove, HS.heli) end
+            wsline("<<ROADLOG>>STOP " .. HS.total)
+            Ess.Log(string.format("[helisweep] done -- %d probe(s) across %d chunks.", HS.total, #HS.chunks))
+            return false
+        end
+        HS.phase, HS.wait = "move", 0
+        return true
     end
-    dropChunk(HS.chunks[HS.i])          -- drop the next chunk; it settles over the next interval
-    return true
 end)
