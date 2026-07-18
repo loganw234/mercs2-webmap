@@ -44,7 +44,10 @@
     var bounds = [[0, 0], [M.H, M.W]];
     var img = window.MERCS_MAP_IMAGE;
     if (img) {
-      L.imageOverlay(img, bounds).addTo(map);
+      // base map in its own low pane (z 250) so the heightmap overlay (pane z 350) sits ABOVE the jpg but
+      // still BELOW the markers (default overlayPane, z 400). Otherwise the overlay renders behind the map.
+      if (!map.getPane("basemap")) map.createPane("basemap").style.zIndex = 250;
+      L.imageOverlay(img, bounds, { pane: "basemap" }).addTo(map);
     } else {
       // no embedded image (e.g. running straight off src without a build) -- still usable as a coordinate grid
       L.rectangle(bounds, { color: "#33362a", weight: 1, fill: false }).addTo(map);
