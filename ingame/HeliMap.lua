@@ -1,21 +1,21 @@
 local KEYVAL = "f6"   -- toggle key (add "HeliMap.lua=f6" under [OnKey]); press again to ABORT
 
--- HeliMap.lua -- terrain-height stripe sweep that NEVER SetPositions/teleports the player mid-run.
+-- HeliMap.lua -- terrain-height STRIPE sweep. Teleport to a map corner ONCE, wait for streaming, get in a
+-- heli, fly one forward (+X) stripe reading ground via GetHeightAboveTerrain. Do parallel passes by hand to
+-- cover the map: after each stripe, edit START_Z below by +ROW_N*STEP and run again.
 --
--- Moving the *player* with SetPosition/teleport every tick triggers load-screen loops + crashes (Logan). So:
--- teleport the player ONCE to the start, wait until their position is STEADY, then Ess.Easy.Vehicle.summon
--- (which seats them in the driver seat). From then on we ONLY move the HELICOPTER -- the seated player rides
--- along, so terrain streams around us with no load trigger. A row of physics-off boxes is SetPosition'd to
--- hang under the heli and read ground via GetHeightAboveTerrain as the heli flies one forward STRIPE. Do
--- parallel passes by hand to fill out the map.
+-- NEVER moves the player after the one initial teleport. Ess.Easy.Vehicle.summon seats the player in the
+-- driver seat; from then on only the HELI moves (SetPosition or impulse) and the seated player rides along,
+-- so terrain streams with no load-screen loop. The heli is summoned only AFTER a fixed STREAM_WAIT so the
+-- corner is fully streamed first -- otherwise the seat fails and the empty heli flies off without you.
 --
--- Two movement modes to compare (MODE below) -- neither ever touches the player:
---   "setpos"  -- SetPosition the heli forward a small step each tick. Deterministic, dead reliable.
---   "impulse" -- push the heli with Object.ApplyImpulse (world +X, held near TARGET_SPEED) and let it fly;
---                boxes track its actual position. Experimental -- tune IMPULSE/UP_IMPULSE if it sinks/stalls.
+-- MODE (neither ever touches the player):
+--   "setpos"  -- SetPosition the heli forward a small step/tick. Deterministic, reliable.
+--   "impulse" -- push the heli with ApplyImpulse (world +X, ~TARGET_SPEED); boxes track it. Experimental.
 --
--- ★ TUNE:  MODE, MOVE_STEP/DT (slower = safer for streaming), LENGTH (stripe length), ROW_N/STEP (width),
---   FLY_Y/BOX_Y, MIN_G/MAX_G (terrain sentinel gate), IMPULSE/UP_IMPULSE/TARGET_SPEED, HELI_TEMPLATE/TEMPLATE.
+-- ★ TUNE:  START_X/START_Z (a map corner; map is +-4102 -- shift START_Z by +ROW_N*STEP each pass),
+--   LENGTH (stripe length; 8204 = full width), ROW_N/STEP (stripe width), STREAM_WAIT, MOVE_STEP/DT (speed),
+--   MODE, FLY_Y/BOX_Y, MIN_G/MAX_G, IMPULSE/UP_IMPULSE/TARGET_SPEED.
 
 local Ess = _G.Ess
 if not (Ess and Ess.Object and Ess.Object.spawn and Ess.Loop and Ess.Player and Ess.Easy and Ess.Easy.Vehicle) then
@@ -26,13 +26,14 @@ end
 local MODE = "setpos"                  -- "setpos" | "impulse"
 local HELI_TEMPLATE = "AH1Z"
 local TEMPLATE = "Cash (Large)"
-local ROW_N, STEP = 12, 32             -- row of ROW_N boxes STEP apart -> stripe width, spanning Z
-local LENGTH = 1500                    -- fly this far forward (+X) then stop
+local ROW_N, STEP = 12, 32             -- ROW_N boxes STEP apart -> stripe width, spanning +Z from START_Z
+local START_X, START_Z = -4102, -4102  -- MAP CORNER (map is +-4102). Next pass: START_Z = START_Z + ROW_N*STEP
+local LENGTH = 8204                    -- fly this far +X then stop (8204 = corner-to-corner)
 local FLY_Y, BOX_Y = 130, 100
-local MOVE_STEP = 16                   -- setpos: heli forward step per tick (small = slow, streaming-safe)
-local TARGET_SPEED, IMPULSE, UP_IMPULSE = 40, 4000, 0   -- impulse mode (UP_IMPULSE>0 if it sinks)
-local MIN_G, MAX_G = -48, 110          -- accept groundY only in this range (drops the terrain sentinel)
-local STEADY_EPS, STEADY_NEEDED, MAX_SETTLE = 0.5, 6, 10.0
+local STREAM_WAIT = 10.0               -- fixed wait after the teleport for streaming to finish before summoning
+local MOVE_STEP = 16                   -- setpos: heli forward step per tick (small = slow/streaming-safe)
+local TARGET_SPEED, IMPULSE, UP_IMPULSE = 40, 4000, 0   -- impulse mode (raise UP_IMPULSE if it sinks)
+local MIN_G, MAX_G = -48, 110          -- accept groundY only in this range (drops the terrain sentinel/ocean)
 local DT = 0.25
 
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
@@ -53,22 +54,20 @@ if HM.on then                                    -- second press: ABORT
     Ess.Log(string.format("[helimap] aborted -- %d point(s) so far.", HM.total or 0)); return
 end
 
-local px, py, pz = Ess.Player.pose(0)
-if not px then Ess.Log("[helimap] no player character"); return end
+if not Ess.Player.character(0) then Ess.Log("[helimap] no player character"); return end
 
-HM.on, HM.total = true, 0
-HM.startX, HM.startZ, HM.heli, HM.row = px, pz, nil, {}
-HM.phase, HM.wait, HM.stable, HM.settleT = "settle", 0, 0, 0
-HM.prevX, HM.prevZ = px, pz
+local rowCenterZ = START_Z + (ROW_N - 1) * STEP / 2
+HM.on, HM.total, HM.heli, HM.row = true, 0, nil, {}
+HM.curX = START_X
+HM.phase, HM.wait = "spawn", STREAM_WAIT
 
--- the ONE and ONLY player teleport: put them at the start (here). After this the player is never moved directly.
-if Ess.Player.teleport then pcall(Ess.Player.teleport, px, py, pz, 0) end
-Ess.Log("[helimap] settling at start before summoning the heli...")
+-- the ONE and ONLY player teleport: to the map corner. After this the player is never moved directly.
+if Ess.Player.teleport then pcall(Ess.Player.teleport, START_X, FLY_Y, rowCenterZ, 0) end
+Ess.Log(string.format("[helimap] teleported to corner (%.0f,%.0f); waiting %.0fs for streaming before summon...", START_X, START_Z, STREAM_WAIT))
 
-local half = (ROW_N - 1) / 2
-local function placeRow(cx, cz)
+local function placeRow(cx)
     for i = 1, #HM.row do
-        if Ess.Object.valid(HM.row[i]) then pcall(Object.SetPosition, HM.row[i], cx, BOX_Y, cz + (i - 1 - half) * STEP) end
+        if Ess.Object.valid(HM.row[i]) then pcall(Object.SetPosition, HM.row[i], cx, BOX_Y, START_Z + (i - 1) * STEP) end
     end
 end
 local function readRow()
@@ -91,60 +90,55 @@ end
 
 Ess.Loop.start("HeliMap", DT, function()
     if not HM.on then return false end
+    if HM.wait > 0 then HM.wait = HM.wait - DT; return true end   -- STREAM_WAIT: let the corner finish streaming
 
-    if HM.phase == "settle" then
-        HM.settleT = HM.settleT + DT
-        local x, _, z = Ess.Player.pose(0)
-        if x then
-            if math.abs(x - HM.prevX) < STEADY_EPS and math.abs(z - HM.prevZ) < STEADY_EPS then HM.stable = HM.stable + 1 else HM.stable = 0 end
-            HM.prevX, HM.prevZ = x, z
-        end
-        if HM.stable >= STEADY_NEEDED or HM.settleT >= MAX_SETTLE then HM.phase = "spawn" end
-        return true
-
-    elseif HM.phase == "spawn" then
-        HM.heli = Ess.Easy.Vehicle.summon(HELI_TEMPLATE)     -- spawns the heli AND seats the player in it
+    if HM.phase == "spawn" then
+        HM.heli = Ess.Easy.Vehicle.summon(HELI_TEMPLATE)         -- spawns the heli AND seats the player
         if not (HM.heli and Ess.Object.valid(HM.heli)) then
             HM.on = false; Ess.Log("[helimap] couldn't summon '" .. HELI_TEMPLATE .. "'"); return false
         end
+        -- MAKE SURE the player is actually in the seat before we move the heli (else it flies off empty)
+        local char = Ess.Player.character(0)
+        if char and Ess.Vehicle and Ess.Vehicle.seatOf and not Ess.Vehicle.seatOf(char) and Ess.Vehicle.enterBestSeat then
+            pcall(Ess.Vehicle.enterBestSeat, char, HM.heli)
+        end
+        if char and Ess.Vehicle and Ess.Vehicle.seatOf and not Ess.Vehicle.seatOf(char) then
+            Ess.Log("[helimap] WARNING: player didn't get seated -- the heli may fly off without you. Raise STREAM_WAIT.")
+        end
         if MODE == "setpos" then pcall(Object.DisablePhysics, HM.heli) else pcall(Object.EnablePhysics, HM.heli) end
-        pcall(Object.SetPosition, HM.heli, HM.startX, FLY_Y, HM.startZ)   -- lift heli (+ seated player) to altitude
+        pcall(Object.SetPosition, HM.heli, START_X, FLY_Y, rowCenterZ)   -- lift heli (+ seated player) to altitude
         for i = 0, ROW_N - 1 do
-            local u = Ess.Object.spawn(TEMPLATE, HM.startX, BOX_Y, HM.startZ + (i - half) * STEP, 0)
+            local u = Ess.Object.spawn(TEMPLATE, START_X, BOX_Y, START_Z + i * STEP, 0)
             if u then pcall(Object.DisablePhysics, u); HM.row[#HM.row + 1] = u end
         end
         if #HM.row == 0 then HM.on = false; cleanup(); Ess.Log("[helimap] box spawn failed -- TEMPLATE valid?"); return false end
-        HM.curX = HM.startX
         wsline("<<ROADLOG>>START")
-        Ess.Log(string.format("[helimap] %s mode: sweeping +X for %d from (%.0f,%.0f), %d-wide. F6 aborts.",
-            MODE, LENGTH, HM.startX, HM.startZ, ROW_N))
+        Ess.Log(string.format("[helimap] %s mode: stripe +X for %d from corner, z[%.0f..%.0f]. F6 aborts.",
+            MODE, LENGTH, START_Z, START_Z + (ROW_N - 1) * STEP))
         HM.phase = "fly"
         return true
-
-    else -- fly
-        if not (HM.heli and Ess.Object.valid(HM.heli)) then HM.on = false; cleanup(); Ess.Log("[helimap] lost the heli"); return false end
-        local hx, hz
-        if MODE == "setpos" then
-            HM.curX = HM.curX + MOVE_STEP
-            pcall(Object.SetPosition, HM.heli, HM.curX, FLY_Y, HM.startZ)   -- move ONLY the heli (player rides)
-            hx, hz = HM.curX, HM.startZ
-        else -- impulse: push the heli forward, let it fly, read where it actually is
-            local okv, v = pcall(Object.GetVelocity, HM.heli)
-            if not okv or (v or 0) < TARGET_SPEED then pcall(Object.ApplyImpulse, HM.heli, IMPULSE, UP_IMPULSE, 0, false) end
-            local okp, x, _, z = pcall(Object.GetPosition, HM.heli)
-            hx, hz = (okp and x) or HM.curX, (okp and z) or HM.startZ
-            HM.curX = hx
-        end
-
-        placeRow(hx, hz)
-        readRow()
-
-        if HM.curX - HM.startX >= LENGTH then
-            HM.on = false; cleanup()
-            wsline("<<ROADLOG>>STOP " .. HM.total)
-            Ess.Log(string.format("[helimap] stripe done -- %d terrain point(s). Fly a parallel pass for the next stripe.", HM.total))
-            return false
-        end
-        return true
     end
+
+    -- fly
+    if not (HM.heli and Ess.Object.valid(HM.heli)) then HM.on = false; cleanup(); Ess.Log("[helimap] lost the heli"); return false end
+    if MODE == "setpos" then
+        HM.curX = HM.curX + MOVE_STEP
+        pcall(Object.SetPosition, HM.heli, HM.curX, FLY_Y, rowCenterZ)   -- move ONLY the heli (player rides)
+    else
+        local okv, v = pcall(Object.GetVelocity, HM.heli)
+        if not okv or (v or 0) < TARGET_SPEED then pcall(Object.ApplyImpulse, HM.heli, IMPULSE, UP_IMPULSE, 0, false) end
+        local okp, x = pcall(Object.GetPosition, HM.heli)
+        HM.curX = (okp and x) or HM.curX
+    end
+
+    placeRow(HM.curX)
+    readRow()
+
+    if HM.curX - START_X >= LENGTH then
+        HM.on = false; cleanup()
+        wsline("<<ROADLOG>>STOP " .. HM.total)
+        Ess.Log(string.format("[helimap] stripe done -- %d terrain point(s). Set START_Z += %d and run again for the next stripe.", HM.total, ROW_N * STEP))
+        return false
+    end
+    return true
 end)
