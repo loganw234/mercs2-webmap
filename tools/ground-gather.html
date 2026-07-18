@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mercs2 Ground Gather</title>
+<style>
+  :root{ --bg:#0e0f0b; --panel:#171812; --line:#33362a; --ink:#e8e9df; --muted:#9aa08a; --accent:#b4e63c; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+    font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; justify-content:center; }
+  .wrap{ width:100%; max-width:440px; padding:20px; }
+  h1{ font-size:17px; margin:0 0 4px; }
+  .sub{ color:var(--muted); font-size:12px; margin:0 0 16px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .row{ display:flex; align-items:center; gap:8px; }
+  .dot{ width:10px; height:10px; border-radius:50%; background:#888; flex:none; box-shadow:0 0 0 2px #0004; }
+  .dot.open{ background:#41d18b; } .dot.connecting{ background:#e0a24a; animation:pulse 1s infinite; }
+  .dot.closed,.dot.error{ background:#c0392b; }
+  @keyframes pulse{ 50%{ opacity:.4; } }
+  .big{ font-size:34px; font-weight:700; letter-spacing:.5px; }
+  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .readout{ color:var(--muted); font-size:12px; margin-top:6px; min-height:1.2em; }
+  label{ color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; }
+  input[type=number]{ width:70px; background:#0c0d09; color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:5px 7px; font-family:inherit; }
+  .btns{ display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+  button{ flex:1; min-width:90px; padding:9px 10px; border:1px solid var(--line); border-radius:7px; cursor:pointer;
+    background:var(--panel); color:var(--ink); font:inherit; }
+  button.primary{ background:var(--accent); color:#0e0f0b; font-weight:600; border-color:var(--accent); }
+  button:hover{ filter:brightness(1.08); }
+  .hint{ color:var(--muted); font-size:11px; margin-top:10px; }
+  code{ background:#0c0d09; padding:1px 5px; border-radius:4px; }
+</style>
+
+<div class="wrap">
+  <h1>Ground Gather</h1>
+  <p class="sub">Fly around with <code>GroundStream.lua</code> (F5) running; this logs terrain height as you go.</p>
+
+  <div class="card">
+    <div class="row"><span id="dot" class="dot connecting"></span><span id="status">connecting to ws://127.0.0.1:27050…</span></div>
+  </div>
+
+  <div class="card">
+    <div class="big mono"><span id="count">0</span> <span style="font-size:14px;color:var(--muted)">points</span></div>
+    <div id="readout" class="readout mono">waiting for stream…</div>
+  </div>
+
+  <div class="card">
+    <label>Thin to one point per <input type="number" id="minmove" value="8" min="0" step="1"> world units</label>
+    <div class="btns" style="margin-top:12px">
+      <button class="primary" id="save">⬇ Save .log</button>
+      <button id="copy">Copy</button>
+      <button id="clear">Clear</button>
+    </div>
+  </div>
+
+  <p class="hint">Points persist locally (survive a refresh). <b>Save .log</b> writes <code>[TERRAIN]</code> lines —
+    drop it in the webmap's <code>data/</code> and run <code>build_heightmap.py</code>. Fly <b>low</b>: readings
+    past ~155u above ground are skipped.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var LS = "mercs2-ground-gather:v1";
+  var pts = [];                 // { x, y, z }  (y = ground height)
+  var last = null, saveT = 0;
+
+  try { var raw = localStorage.getItem(LS); if (raw) pts = JSON.parse(raw) || []; } catch (e) {}
+
+  var $ = function (id) { return document.getElementById(id); };
+  function saveSoon() { if (saveT) return; saveT = setTimeout(function () { saveT = 0; try { localStorage.setItem(LS, JSON.stringify(pts)); } catch (e) {} }, 1000); }
+  function render() {
+    $("count").textContent = pts.length;
+    if (last) $("readout").textContent = "x " + last.x.toFixed(1) + "   z " + last.z.toFixed(1) + "   ground " + last.y.toFixed(1) + "   (" + last.dist.toFixed(0) + "u up)";
+  }
+  render();
+
+  function minMove() { var v = parseFloat($("minmove").value); return isFinite(v) && v >= 0 ? v : 0; }
+
+  function add(x, gy, z, dist) {
+    last = { x: x, y: gy, z: z, dist: dist };
+    var mm = minMove();
+    if (mm > 0 && pts.length) {
+      var p = pts[pts.length - 1], dx = x - p.x, dz = z - p.z;
+      if (dx * dx + dz * dz < mm * mm) { render(); return; }   // too close to the last kept point -> just update readout
+    }
+    pts.push({ x: Math.round(x * 100) / 100, y: Math.round(gy * 100) / 100, z: Math.round(z * 100) / 100 });
+    saveSoon(); render();
+  }
+
+  // ---- minimal WS listener (we only receive; no need for the full bridge client) ----
+  var ws, delay = 1000;
+  function setDot(s, msg) { $("dot").className = "dot " + s; if (msg) $("status").textContent = msg; }
+  function connect() {
+    setDot("connecting", "connecting to ws://127.0.0.1:27050…");
+    try { ws = new WebSocket("ws://127.0.0.1:27050"); } catch (e) { setDot("error", "WebSocket blocked: " + e.message); return; }
+    ws.onopen = function () { delay = 1000; setDot("open", "connected — streaming"); };
+    ws.onclose = function () { setDot("closed", "disconnected — retrying…"); setTimeout(connect, delay); delay = Math.min(delay * 1.6, 5000); };
+    ws.onerror = function () { setDot("error", "connection error (is the game + lua-bridge running?)"); };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.type !== "ws" || typeof m.line !== "string" || m.line.indexOf("<<GROUND>>") !== 0) return;
+      var a = m.line.slice(10).split(",");
+      var x = +a[0], y = +a[1], z = +a[2], dist = +a[3];
+      if (isFinite(x) && isFinite(y) && isFinite(z) && isFinite(dist)) add(x, y - dist, z, dist);   // groundY = y - dist
+    };
+  }
+  connect();
+
+  // ---- export ----
+  function logText() {
+    return pts.map(function (p, i) { return "[Ess] [TERRAIN] " + (i + 1) + "  x=" + p.x.toFixed(2) + "  y=" + p.y.toFixed(2) + "  z=" + p.z.toFixed(2); }).join("\n");
+  }
+  $("save").addEventListener("click", function () {
+    if (!pts.length) { alert("No points yet — fly around with GroundStream running."); return; }
+    var blob = new Blob([logText()], { type: "text/plain" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "GroundStream.log"; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  });
+  $("copy").addEventListener("click", function () {
+    var t = logText(), b = $("copy");
+    var done = function () { b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = "Copy"; }, 1200); };
+    try { navigator.clipboard.writeText(t).then(done, done); } catch (e) { done(); }
+  });
+  $("clear").addEventListener("click", function () {
+    if (pts.length && !confirm("Clear all " + pts.length + " gathered points?")) return;
+    pts = []; last = null; try { localStorage.removeItem(LS); } catch (e) {} render(); $("readout").textContent = "cleared";
+  });
+})();
+</script>
