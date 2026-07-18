@@ -17,25 +17,25 @@
     if (p && typeof p.x === "number" && typeof p.z === "number") return { x: p.x, y: (typeof p.y === "number" ? p.y : 0), z: p.z };
     return null;
   }
-  function popupHtml(label, p, pos) {
-    var s = "<b>" + esc(label) + "</b><br><span class='mono'>x " + r1(pos.x) + "  y " + r1(pos.y) + "  z " + r1(pos.z) + "</span>";
+  function popupHtml(title, p, pos, kind) {
+    var s = "<b>" + esc(title) + "</b><br><span class='mono'>x " + r1(pos.x) + "  y " + r1(pos.y) + "  z " + r1(pos.z) + "</span>";
     for (var k in p) {
-      if (!p.hasOwnProperty(k) || k === "position" || k === "x" || k === "y" || k === "z") continue;
+      if (!p.hasOwnProperty(k) || k === "position" || k === "x" || k === "y" || k === "z" || k === "name") continue;
       s += "<br><span class='k'>" + esc(k) + "</span>: " + esc(String(p[k]));
     }
-    s += "<div class='wm-pop-actions'><button type='button' class='wm-collect'>☐ Mark collected</button></div>";
+    if (kind === "teleport") s += "<div class='wm-pop-actions'><button type='button' class='wm-teleport'>⇱ Teleport here</button></div>";
+    else s += "<div class='wm-pop-actions'><button type='button' class='wm-collect'>☐ Mark collected</button></div>";
     return s;
   }
 
   // Normalize whatever was loaded into { id, name, groupBy, colors, labels, points:[] }.
   function normalize(ds, fallbackName) {
-    if (Array.isArray(ds)) return { name: fallbackName || "Layer", points: ds };
-    var out = {
-      id: ds.id, name: ds.name || fallbackName || "Layer", groupBy: ds.groupBy,
-      colors: ds.colors || {}, labels: ds.labels || {},
+    if (Array.isArray(ds)) return { name: fallbackName || "Layer", kind: "collectible", colors: {}, labels: {}, points: ds };
+    return {
+      id: ds.id, name: ds.name || fallbackName || "Layer", kind: ds.kind || "collectible",
+      groupBy: ds.groupBy, color: ds.color, colors: ds.colors || {}, labels: ds.labels || {},
       points: ds.points || ds.features || ds.items || [],
     };
-    return out;
   }
 
   WM.addDataset = function (raw, fallbackName) {
@@ -47,25 +47,36 @@
       buckets[key].push(p);
     });
 
-    var entry = { id: ds.id || ("ds" + (WM.datasets.length + 1)), name: ds.name, groups: {} };
+    var entry = { id: ds.id || ("ds" + (WM.datasets.length + 1)), name: ds.name, kind: ds.kind, groups: {} };
     order.forEach(function (key) {
       var pts = buckets[key];
-      var color = ds.colors[key] || PALETTE[colorSeq++ % PALETTE.length];
+      var color = ds.colors[key] || ds.color || PALETTE[colorSeq++ % PALETTE.length];
       var label = ds.labels[key] || (key === "_all" ? ds.name : key);
       var lg = L.layerGroup(), placed = 0, first = null, markers = [];
       pts.forEach(function (p, idx) {
         var pos = posOf(p); if (!pos) return;
         var ll = WM.worldToLatLng(pos.x, pos.z); if (!first) first = ll;
-        var m = L.circleMarker(ll, { radius: 5, color: "#0008", weight: 1, fillColor: color, fillOpacity: 0.9 });
-        m._wmKey = entry.id + ":" + (p.entity_id || p.id || ("#" + idx));   // stable per-point id for collected ticks
-        m._wmColor = color; m._wmLayer = lg;
-        m.bindPopup(popupHtml(label, p, pos));
-        m.bindTooltip(label, { direction: "top", opacity: 0.9 });
-        if (WM.applyCollectedStyle) WM.applyCollectedStyle(m);   // dim if already ticked off
+        var title = p.name || label;
+        var m;
+        if (ds.kind === "teleport") {
+          // a distinct, always-labelled dot; its popup gets a "Teleport here" button (see 26_teleport.js).
+          m = L.circleMarker(ll, { radius: 6, color: "#08343a", weight: 2, fillColor: color, fillOpacity: 0.95 });
+          m._wmKind = "teleport";
+          m._wmTp = { x: pos.x, y: pos.y, z: pos.z, yaw: (typeof p.yaw === "number" ? p.yaw : 0), name: title };
+          m.bindTooltip(title, { permanent: true, direction: "top", className: "tp-label", opacity: 0.95 });
+        } else {
+          m = L.circleMarker(ll, { radius: 5, color: "#0008", weight: 1, fillColor: color, fillOpacity: 0.9 });
+          m._wmKind = "collectible";
+          m._wmKey = entry.id + ":" + (p.entity_id || p.id || ("#" + idx));   // stable per-point id for collected ticks
+          m._wmColor = color; m._wmLayer = lg;
+          m.bindTooltip(title, { direction: "top", opacity: 0.9 });
+          if (WM.applyCollectedStyle) WM.applyCollectedStyle(m);   // dim if already ticked off
+        }
+        m.bindPopup(popupHtml(title, p, pos, ds.kind));
         lg.addLayer(m); markers.push(m); placed++;
       });
       lg.addTo(WM.map);
-      entry.groups[key] = { layer: lg, color: color, label: label, count: placed, visible: true, sample: first, markers: markers };
+      entry.groups[key] = { layer: lg, color: color, label: label, count: placed, visible: true, sample: first, markers: markers, kind: ds.kind };
     });
 
     WM.datasets.push(entry);
@@ -107,12 +118,13 @@
       Object.keys(d.groups).forEach(function (key) {
         var g = d.groups[key];
         var name = (Object.keys(d.groups).length > 1) ? (d.name + " · " + g.label) : g.label;
-        var done = WM.groupCollected ? WM.groupCollected(g) : 0;
+        var isColl = (g.kind === "collectible");
+        var cnt = (isColl && WM.groupCollected) ? (WM.groupCollected(g) + "/" + g.count) : String(g.count);
         var row = document.createElement("label");
         row.className = "row";
         row.innerHTML = "<input type='checkbox'" + (g.visible ? " checked" : "") + ">"
           + "<span class='swatch' style='background:" + g.color + "'></span>"
-          + "<span class='name'>" + esc(name) + "</span><span class='count'>" + done + "/" + g.count + "</span>";
+          + "<span class='name'>" + esc(name) + "</span><span class='count'>" + cnt + "</span>";
         row.querySelector("input").addEventListener("change", function (e) { WM.setGroupVisible(d.id, key, e.target.checked); WM.renderLegend(); });
         host.appendChild(row);
       });

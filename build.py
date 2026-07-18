@@ -39,7 +39,9 @@ def main():
     map_js = SRC / "data" / "map-image.js"
     if not map_js.exists():
         raise SystemExit("missing src/data/map-image.js -- run: python tools/gen_map_image.py")
-    data = map_js.read_text(encoding="utf-8") + "\n" + read("data", "collectibles.js")
+    data = (map_js.read_text(encoding="utf-8") + "\n"
+            + read("data", "collectibles.js") + "\n"
+            + read("data", "teleports.js"))
 
     app_files = sorted((SRC / "app").glob("*.js"))
     app = "\n".join("/* ==== %s ==== */\n%s" % (p.name, p.read_text(encoding="utf-8")) for p in app_files)

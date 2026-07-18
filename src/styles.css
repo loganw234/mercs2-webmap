@@ -88,4 +88,13 @@ html,body{ margin:0; height:100%; background:var(--bg); color:var(--ink);
 .wm-collect:hover{ border-color:var(--accent); }
 .wm-collect.on{ background:#2a3320; color:var(--accent); border-color:#3f5a2a; }
 
+/* teleport-spot popup button + the always-on spot label */
+.wm-teleport{ width:100%; padding:6px 8px; border:1px solid #2a4a50; background:#123037; color:#bdeef4;
+  border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.wm-teleport:hover:not(:disabled){ border-color:#3fd0e0; }
+.wm-teleport:disabled,.wm-teleport.disabled{ opacity:.55; cursor:not-allowed; font-weight:400; }
+.leaflet-tooltip.tp-label{ background:#0c1416; color:#bdeef4; border:1px solid #2a4a50; box-shadow:0 1px 4px #0006;
+  font-size:11px; padding:2px 6px; font-weight:600; }
+.leaflet-tooltip-top.tp-label:before{ border-top-color:#2a4a50; }
+
 @media (max-width:640px){ .panel{ width:calc(100% - 24px); max-height:52%; } }

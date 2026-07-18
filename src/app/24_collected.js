@@ -69,7 +69,7 @@
   };
   WM.collectedCounts = function () {
     var total = 0, done = 0;
-    eachMarker(function (m) { total++; if (WM.isCollected(m._wmKey)) done++; });
+    eachMarker(function (m) { if (!m._wmKey) return; total++; if (WM.isCollected(m._wmKey)) done++; });   // skip teleport (non-collectible) markers
     return { done: done, total: total };
   };
 

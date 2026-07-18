@@ -11,9 +11,15 @@ by the game's own lua-bridge at `http://127.0.0.1:27050/`.
 ## Using it
 
 - **Layers** — toggle each point-group on/off. Click a marker for its coordinates and metadata.
+- **Collect tracking** — each collectible's popup has a **Mark collected** button; ticks persist in
+  `localStorage` (keyed by `entity_id`), collected boxes dim out, each layer shows `done/total`, and there's
+  **Hide collected** + **Reset ticks**.
+- **Teleport spots** — a `kind:"teleport"` layer of named locations (bright labelled dots). With the game
+  connected, a spot's popup has a **⇱ Teleport here** button that jumps the player there via
+  `Ess.Player.teleport(x,y,z,yaw)`. Grows as you collect spots with the in-game `[Ess][LOCATION]` tool.
 - **＋ Load JSON layer…** — drop in any JSON array of `{ "position": { "x", "y", "z" }, ... }` points (or a
-  `{ name, groupBy, colors, points:[…] }` wrapper) and it becomes a new toggleable layer. This is the whole
-  point of the tool being generic — the collectibles are just the first dataset.
+  `{ name, kind, groupBy, colors, points:[…] }` wrapper) and it becomes a new toggleable layer. This is the
+  whole point of the tool being generic — the collectibles are just the first dataset.
 - **Live player** *(optional)* — click **Connect to game**. The page talks straight to the running game over
   the lua-bridge WebSocket (`127.0.0.1:27050`) and draws a heading arrow where player 0 is standing, a few
   times a second. It's entirely opt-in: everything else works with no game and no connection. Chrome shows a
