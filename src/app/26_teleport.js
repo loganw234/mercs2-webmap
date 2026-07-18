@@ -76,7 +76,7 @@
         var pos = s.position || {}; return { name: s.name, position: { x: pos.x, y: pos.y, z: pos.z }, yaw: s.yaw };
       }), null, 2);
     },
-    init: function () { load(); rebuild(); },
+    init: function () { load(); WM.tpAll = WM.tpAllEnabled(); rebuild(); },
   };
 
   // Save the LOCAL player's CURRENT position as a new spot. One-shot pose read (not the per-frame stream), so
@@ -112,32 +112,54 @@
     });
   };
 
-  // wire the "Teleport here" + "Delete spot" buttons whenever a teleport popup opens.
+  // ---- "Teleport to all" mode (persisted): when on, ANY marker's popup gets a teleport button ----
+  var TPALL_KEY = "mercs2-webmap:tpall";
+  WM.tpAllEnabled = function () { try { return localStorage.getItem(TPALL_KEY) === "1"; } catch (e) { return false; } };
+  WM.setTpAll = function (on) { WM.tpAll = !!on; try { localStorage.setItem(TPALL_KEY, on ? "1" : "0"); } catch (e) {} };
+
+  // wire a teleport button to a {x,y,z,yaw} spot: reflect live/offline, run the jump on click.
+  function wireTeleportButton(btn, tp) {
+    (function sync() {
+      var live = !!(WM.bridge && WM.bridge.state === "open");
+      btn.disabled = !live;
+      btn.textContent = live ? "⇱ Teleport here" : "Connect to game to teleport";
+      btn.className = "wm-teleport" + (live ? "" : " disabled");
+      btn.onclick = function () {
+        if (btn.disabled) return;
+        btn.textContent = "Teleporting…";
+        WM.teleportTo(tp, function (ok) { btn.textContent = ok ? "✓ Teleported" : "Teleport failed"; setTimeout(sync, 1300); });
+      };
+    })();
+  }
+
+  // Teleport spots get their button (+ delete). With "Teleport to all" on, every OTHER marker gets a
+  // teleport button injected into its popup too.
   WM.initTeleport = function () {
     WM.map.on("popupopen", function (e) {
-      var mk = e.popup && e.popup._source; if (!mk || mk._wmKind !== "teleport") return;
+      var mk = e.popup && e.popup._source; if (!mk) return;
       var el = e.popup.getElement && e.popup.getElement(); if (!el) return;
 
-      var btn = el.querySelector(".wm-teleport");
-      if (btn) {
-        (function sync() {
-          var live = !!(WM.bridge && WM.bridge.state === "open");
-          btn.disabled = !live;
-          btn.textContent = live ? "⇱ Teleport here" : "Connect to game to teleport";
-          btn.className = "wm-teleport" + (live ? "" : " disabled");
-          btn.onclick = function () {
-            if (btn.disabled) return;
-            btn.textContent = "Teleporting…";
-            WM.teleportTo(mk._wmTp, function (ok) { btn.textContent = ok ? "✓ Teleported" : "Teleport failed"; setTimeout(sync, 1300); });
-          };
-        })();
+      if (mk._wmKind === "teleport") {
+        var btn = el.querySelector(".wm-teleport");
+        if (btn) wireTeleportButton(btn, mk._wmTp);
+        var del = el.querySelector(".wm-tp-del");
+        if (del) del.onclick = function () {
+          var uid = del.getAttribute("data-uid");
+          if (uid && window.confirm("Delete saved spot \"" + ((mk._wmTp && mk._wmTp.name) || "") + "\"?")) WM.teleports.remove(uid);
+        };
+        return;
       }
 
-      var del = el.querySelector(".wm-tp-del");
-      if (del) del.onclick = function () {
-        var uid = del.getAttribute("data-uid");
-        if (uid && window.confirm("Delete saved spot \"" + ((mk._wmTp && mk._wmTp.name) || "") + "\"?")) WM.teleports.remove(uid);
-      };
+      // non-teleport marker: inject a teleport button when "Teleport to all" is on, or remove a stale one
+      // that lingered from when it was on (Leaflet reuses the popup DOM across opens).
+      var actions = el.querySelector(".wm-pop-actions"); if (!actions) return;
+      var existing = actions.querySelector(".wm-teleport");
+      if (WM.tpAll && mk._wmPos) {
+        if (!existing) { existing = document.createElement("button"); existing.type = "button"; existing.className = "wm-teleport"; actions.insertBefore(existing, actions.firstChild); }
+        wireTeleportButton(existing, { x: mk._wmPos.x, y: mk._wmPos.y, z: mk._wmPos.z, yaw: 0 });
+      } else if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+      }
     });
   };
 })();

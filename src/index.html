@@ -58,6 +58,9 @@
           <div class="tp-tool-row"><button type="button" id="exportCopy" class="btn small">Copy</button></div>
           <p class="hint">All spots (built-in + your saved ones). Replace the <code>points</code> array in <code>src/data/teleports.js</code> with this to ship them to everyone.</p>
         </div>
+        <label class="chk small" title="Let any layer point be teleported to, not just teleport spots">
+          <input type="checkbox" id="tpAllToggle"> Teleport to all points
+        </label>
       </section>
 
       <section>
@@ -81,6 +84,16 @@
   </aside>
 
   <div id="coordBar" class="mono"></div>
+
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button type="button" id="modalCancel" class="btn secondary small">Cancel</button>
+        <button type="button" id="modalOk" class="btn small">OK</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>/*__LEAFLET_JS__*/</script>

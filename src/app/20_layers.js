@@ -78,6 +78,7 @@
           m.bindTooltip(title, { direction: "top", opacity: 0.9 });
           if (WM.applyCollectedStyle) WM.applyCollectedStyle(m);   // dim if already ticked off
         }
+        m._wmPos = { x: pos.x, y: pos.y, z: pos.z };   // world pos on EVERY marker -> "Teleport to all" can jump to any
         m.bindPopup(popupHtml(title, p, pos, ds.kind));
         lg.addLayer(m); markers.push(m); placed++;
       });

@@ -92,5 +92,21 @@
       try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(exportText.value).then(done, function () { try { document.execCommand("copy"); done(); } catch (e) {} }); return; } } catch (e) {}
       try { document.execCommand("copy"); done(); } catch (e) {}
     });
+
+    // ---- "Teleport to all" toggle (with the obligatory ceremony) ----
+    var tpAll = $("tpAllToggle");
+    if (tpAll) {
+      tpAll.checked = WM.tpAllEnabled ? WM.tpAllEnabled() : false;
+      tpAll.addEventListener("change", function () {
+        if (!tpAll.checked) { WM.setTpAll(false); return; }   // turning it OFF needs no ceremony
+        WM.confirmModal(
+          "<h3>Enable not <em>too</em> cheaty mode?</h3>"
+          + "<p>This lets you teleport to <b>any</b> point on <b>any</b> layer — every collectible, every marker — not just the teleport spots.</p>"
+          + "<p class='modal-fine'>Strictly for efficient traversal, obviously.</p>",
+          { okText: "Enable it 😏", cancelText: "Nah, keep it fair",
+            onOk: function () { WM.setTpAll(true); },
+            onCancel: function () { tpAll.checked = false; } });
+      });
+    }
   };
 })();
