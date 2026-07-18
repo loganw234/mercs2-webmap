@@ -32,6 +32,7 @@
     var btn = document.getElementById("liveBtn");
     if (btn) btn.textContent = state === "open" ? "Disconnect" : (state === "connecting" ? "Connecting…" : "Connect to game");
     var info = document.getElementById("liveInfo"); if (info) info.hidden = state !== "open";
+    var save = document.getElementById("saveSpotBtn"); if (save && save.textContent.indexOf("Saving") === -1) save.disabled = state !== "open";
     if (WM.renderLegend) WM.renderLegend();
   }
 

@@ -20,11 +20,16 @@
   function popupHtml(title, p, pos, kind) {
     var s = "<b>" + esc(title) + "</b><br><span class='mono'>x " + r1(pos.x) + "  y " + r1(pos.y) + "  z " + r1(pos.z) + "</span>";
     for (var k in p) {
-      if (!p.hasOwnProperty(k) || k === "position" || k === "x" || k === "y" || k === "z" || k === "name") continue;
+      if (!p.hasOwnProperty(k) || k.charAt(0) === "_" || k === "position" || k === "x" || k === "y" || k === "z" || k === "name") continue;
       s += "<br><span class='k'>" + esc(k) + "</span>: " + esc(String(p[k]));
     }
-    if (kind === "teleport") s += "<div class='wm-pop-actions'><button type='button' class='wm-teleport'>⇱ Teleport here</button></div>";
-    else s += "<div class='wm-pop-actions'><button type='button' class='wm-collect'>☐ Mark collected</button></div>";
+    if (kind === "teleport") {
+      s += "<div class='wm-pop-actions'><button type='button' class='wm-teleport'>⇱ Teleport here</button>";
+      if (p._uid) s += "<button type='button' class='wm-tp-del' data-uid='" + esc(p._uid) + "'>🗑 Delete spot</button>";
+      s += "</div>";
+    } else {
+      s += "<div class='wm-pop-actions'><button type='button' class='wm-collect'>☐ Mark collected</button></div>";
+    }
     return s;
   }
 
@@ -63,6 +68,7 @@
           m = L.circleMarker(ll, { radius: 6, color: "#08343a", weight: 2, fillColor: color, fillOpacity: 0.95 });
           m._wmKind = "teleport";
           m._wmTp = { x: pos.x, y: pos.y, z: pos.z, yaw: (typeof p.yaw === "number" ? p.yaw : 0), name: title };
+          m._wmUid = p._uid;   // set for user-saved spots (localStorage) -> deletable; undefined for built-in
           m.bindTooltip(title, { permanent: true, direction: "top", className: "tp-label", opacity: 0.95 });
         } else {
           m = L.circleMarker(ll, { radius: 5, color: "#0008", weight: 1, fillColor: color, fillOpacity: 0.9 });
@@ -85,6 +91,18 @@
     WM.renderLegend();
     if (WM.updateProgress) WM.updateProgress();
     return entry;
+  };
+
+  // remove a dataset (its layers off the map + out of WM.datasets). Used to rebuild the teleport layer.
+  WM.removeDataset = function (dsId) {
+    for (var i = 0; i < WM.datasets.length; i++) {
+      if (WM.datasets[i].id !== dsId) continue;
+      var d = WM.datasets[i];
+      Object.keys(d.groups).forEach(function (k) { if (WM.map.hasLayer(d.groups[k].layer)) WM.map.removeLayer(d.groups[k].layer); });
+      WM.datasets.splice(i, 1);
+      return true;
+    }
+    return false;
   };
 
   // fit the view to every visible marker across all datasets (used after loading a file, and by the panel).

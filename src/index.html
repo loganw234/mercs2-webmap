@@ -32,6 +32,27 @@
         <p class="hint">Any JSON array of <code>{position:{x,y,z}}</code> points drops in as a new layer.</p>
       </section>
 
+      <section id="tpSection">
+        <h2>Teleport spots</h2>
+        <button type="button" id="saveSpotBtn" class="btn small" disabled title="Connect to the game to save your position">＋ Save current spot</button>
+        <div class="tp-tool-row">
+          <button type="button" id="importSpotsBtn" class="btn secondary small">Paste import</button>
+          <button type="button" id="exportSpotsBtn" class="btn secondary small">Export</button>
+        </div>
+        <div id="importPane" class="tp-pane" hidden>
+          <textarea id="importText" rows="4" placeholder="Paste [Ess][LOCATION] log lines, or JSON spots…"></textarea>
+          <div class="tp-tool-row">
+            <button type="button" id="importAdd" class="btn small">Add spots</button>
+            <button type="button" id="importCancel" class="btn secondary small">Cancel</button>
+          </div>
+        </div>
+        <div id="exportPane" class="tp-pane" hidden>
+          <textarea id="exportText" rows="5" readonly></textarea>
+          <div class="tp-tool-row"><button type="button" id="exportCopy" class="btn small">Copy</button></div>
+          <p class="hint">All spots (built-in + your saved ones). Replace the <code>points</code> array in <code>src/data/teleports.js</code> with this to ship them to everyone.</p>
+        </div>
+      </section>
+
       <section>
         <h2>Live player <span id="liveDot" class="dot closed" title="not connected"></span></h2>
         <button id="liveBtn" class="btn">Connect to game</button>

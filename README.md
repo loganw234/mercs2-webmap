@@ -16,7 +16,9 @@ by the game's own lua-bridge at `http://127.0.0.1:27050/`.
   **Hide collected** + **Reset ticks**.
 - **Teleport spots** — a `kind:"teleport"` layer of named locations (bright labelled dots). With the game
   connected, a spot's popup has a **⇱ Teleport here** button that jumps the player there via
-  `Ess.Player.teleport(x,y,z,yaw)`. Grows as you collect spots with the in-game `[Ess][LOCATION]` tool.
+  `Ess.Player.teleport(x,y,z,yaw)`. Collect spots three ways: **Save current spot** (reads your live pose),
+  **Paste import** (raw `[Ess][LOCATION]` log lines *or* JSON), or edit `teleports.js`. Saved spots live in
+  `localStorage`; **Export** dumps all spots as JSON to paste back into `src/data/teleports.js` for everyone.
 - **＋ Load JSON layer…** — drop in any JSON array of `{ "position": { "x", "y", "z" }, ... }` points (or a
   `{ name, kind, groupBy, colors, points:[…] }` wrapper) and it becomes a new toggleable layer. This is the
   whole point of the tool being generic — the collectibles are just the first dataset.

@@ -96,5 +96,15 @@ html,body{ margin:0; height:100%; background:var(--bg); color:var(--ink);
 .leaflet-tooltip.tp-label{ background:#0c1416; color:#bdeef4; border:1px solid #2a4a50; box-shadow:0 1px 4px #0006;
   font-size:11px; padding:2px 6px; font-weight:600; }
 .leaflet-tooltip-top.tp-label:before{ border-top-color:#2a4a50; }
+.wm-tp-del{ width:100%; margin-top:6px; padding:5px 8px; border:1px solid var(--line); background:var(--panel-2);
+  color:#ff8c8c; border-radius:6px; cursor:pointer; font-size:11px; }
+.wm-tp-del:hover{ border-color:#ff5d73; }
+
+/* teleport-spot tools in the panel (save / import / export) */
+#saveSpotBtn{ width:100%; }
+.tp-tool-row{ display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.tp-pane{ margin-top:8px; }
+.tp-pane textarea{ width:100%; box-sizing:border-box; background:#0c0d09; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:6px 8px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:11px; resize:vertical; }
 
 @media (max-width:640px){ .panel{ width:calc(100% - 24px); max-height:52%; } }

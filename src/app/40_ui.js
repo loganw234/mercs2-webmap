@@ -48,5 +48,49 @@
       reader.readAsText(f);
       e.target.value = "";  // allow re-loading the same file
     });
+
+    // ---- teleport-spot tools: save current position, paste-import, export ----
+    var importPane = $("importPane"), exportPane = $("exportPane"), importText = $("importText"), exportText = $("exportText");
+
+    var saveSpot = $("saveSpotBtn");
+    if (saveSpot) saveSpot.addEventListener("click", function () {
+      if (!(WM.bridge && WM.bridge.state === "open")) { alert("Connect to the game first — then Save current spot reads your live position."); return; }
+      var name = window.prompt("Name this spot:", "Spot " + (WM.teleports.user.length + 1));
+      if (name === null) return;
+      saveSpot.disabled = true; saveSpot.textContent = "Saving…";
+      WM.captureSpot(name, function (ok) {
+        saveSpot.textContent = ok ? "✓ Saved" : "Save failed";
+        setTimeout(function () { saveSpot.textContent = "＋ Save current spot"; saveSpot.disabled = !(WM.bridge && WM.bridge.state === "open"); }, 1300);
+      });
+    });
+
+    var importBtn = $("importSpotsBtn");
+    if (importBtn) importBtn.addEventListener("click", function () {
+      if (exportPane) exportPane.hidden = true;
+      if (importPane) { importPane.hidden = !importPane.hidden; if (!importPane.hidden && importText) importText.focus(); }
+    });
+    var importAdd = $("importAdd");
+    if (importAdd) importAdd.addEventListener("click", function () {
+      var n = WM.teleports.importText(importText ? importText.value : "");
+      if (n) { if (importText) importText.value = ""; if (importPane) importPane.hidden = true; }
+      else alert("No spots found. Paste [Ess][LOCATION] log lines, or JSON spots.");
+    });
+    var importCancel = $("importCancel");
+    if (importCancel) importCancel.addEventListener("click", function () { if (importPane) importPane.hidden = true; if (importText) importText.value = ""; });
+
+    var exportBtn = $("exportSpotsBtn");
+    if (exportBtn) exportBtn.addEventListener("click", function () {
+      if (importPane) importPane.hidden = true;
+      if (exportText) exportText.value = WM.teleports.exportJSON();
+      if (exportPane) { exportPane.hidden = !exportPane.hidden; if (!exportPane.hidden && exportText) { exportText.focus(); exportText.select(); } }
+    });
+    var exportCopy = $("exportCopy");
+    if (exportCopy) exportCopy.addEventListener("click", function () {
+      if (!exportText) return;
+      exportText.select();
+      var done = function () { exportCopy.textContent = "Copied ✓"; setTimeout(function () { exportCopy.textContent = "Copy"; }, 1200); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(exportText.value).then(done, function () { try { document.execCommand("copy"); done(); } catch (e) {} }); return; } } catch (e) {}
+      try { document.execCommand("copy"); done(); } catch (e) {}
+    });
   };
 })();
