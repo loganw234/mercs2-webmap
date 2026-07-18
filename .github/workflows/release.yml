@@ -1,0 +1,34 @@
+name: Publish standalone build to a rolling release
+
+# Keeps a "latest" GitHub Release whose asset is the single-file standalone map, so it can be downloaded and
+# opened straight off disk (the friendliest path for the live overlay: Chrome allows ws://127.0.0.1 from a
+# downloaded file, and the bridge can also serve this very file at http://127.0.0.1:27050/).
+#   https://github.com/<owner>/mercs2-webmap/releases/latest/download/mercs2-webmap.html
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.x" }
+      - name: Build the standalone
+        run: |
+          python build.py
+          cp dist/index.html mercs2-webmap.html
+      - name: Update the "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest standalone build
+          body: "The single-file Mercs2 live map. Download `mercs2-webmap.html` and open it in any browser — it works offline; the optional live-player overlay connects to your local lua-bridge on 127.0.0.1:27050."
+          files: mercs2-webmap.html
+          make_latest: "true"
