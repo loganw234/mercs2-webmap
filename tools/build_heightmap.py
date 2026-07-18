@@ -24,7 +24,7 @@ RX = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)")
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cell", type=int, default=32, help="grid cell size in world units")
-    ap.add_argument("--ymin", type=float, default=-150.0, help="drop samples below this y (fell through the world)")
+    ap.add_argument("--ymin", type=float, default=-200.0, help="drop samples below this y (fell through the world; real seafloor reaches ~-167)")
     ap.add_argument("--ymax", type=float, default=700.0, help="drop samples above this y (keeps the ~472 edge mountains)")
     args = ap.parse_args()
     cell = max(1, args.cell)

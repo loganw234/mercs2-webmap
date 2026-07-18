@@ -23,7 +23,10 @@
     }
     return STOPS[STOPS.length - 1][1];
   }
-  function colorFor(h) { var c = ramp((h - HM.yMin) / ((HM.yMax - HM.yMin) || 1)); return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")"; }
+  function colorFor(h) {
+    var lo = (HM.rampLo != null) ? HM.rampLo : HM.yMin, hi = (HM.rampHi != null) ? HM.rampHi : HM.yMax;
+    var c = ramp((h - lo) / ((hi - lo) || 1)); return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+  }
 
   WM.heightAt = function (x, z) {
     if (!HM) return null;
@@ -74,11 +77,16 @@
     HM = window.MERCS_HEIGHTMAP || null;
     var sec = document.getElementById("hmSection"); if (sec) sec.hidden = !HM;
     if (!HM) return;
+    // robust colour range: p2..p98 of cell heights, so deep seafloor / high peaks don't wash out land contrast
+    var hs = []; for (var k in HM.cells) if (HM.cells.hasOwnProperty(k)) hs.push(HM.cells[k][0]);
+    hs.sort(function (a, b) { return a - b; });
+    HM.rampLo = hs.length ? hs[Math.floor(hs.length * 0.02)] : HM.yMin;
+    HM.rampHi = hs.length ? hs[Math.floor(hs.length * 0.98)] : HM.yMax;
     var leg = document.getElementById("hmLegend");
     if (leg) {
       var g = STOPS.map(function (s) { return "rgb(" + s[1].join(",") + ") " + Math.round(s[0] * 100) + "%"; }).join(",");
       leg.innerHTML = "<div class='hm-bar' style='background:linear-gradient(90deg," + g + ")'></div>"
-        + "<div class='hm-scale'><span>" + Math.round(HM.yMin) + "</span><span>height</span><span>" + Math.round(HM.yMax) + "</span></div>";
+        + "<div class='hm-scale'><span>" + Math.round(HM.rampLo) + "</span><span>height</span><span>" + Math.round(HM.rampHi) + "</span></div>";
     }
     var info = document.getElementById("hmInfo");
     if (info) info.textContent = HM.n + " samples · " + HM.cellCount + " cells · " + HM.cell + "u grid · brighter = firmer source";
