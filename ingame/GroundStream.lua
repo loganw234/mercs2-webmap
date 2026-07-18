@@ -1,11 +1,10 @@
 local KEYVAL = "f5"   -- toggle key (add "GroundStream.lua=f5" under [OnKey]); press again to ABORT
 
--- GroundStream.lua -- automatic full-map terrain scan via a FREECAM probe. Spawns a prop, rigs the camera to
--- it (Camera.SetLookAt + Camera.Hold -- the deep-dive finding: SetPosition only commits once a SetLookAt is
--- active), then steps the prop + camera across a grid reading Object.GetHeightAboveTerrain at each point. The
--- PLAYER never moves, so there are no load-screen loops -- only the detached camera flies. Streams
--- <<GROUND>>x,y,z,dist per point; ground-gather.html turns each into a terrain point. Restores the camera on
--- finish/abort. F5 aborts.
+-- GroundStream.lua -- automatic full-map terrain scan via a cinematic-camera probe. Spawns a prop, locks the
+-- camera onto it with Ess.Camera (beginCinematic + lookAtObject -- the SAME safe primitives Ess.Cinematic's
+-- chase/camera steps use; raw Camera.* calls crash), then steps the prop + camera across a grid reading
+-- Object.GetHeightAboveTerrain at each point. The PLAYER never moves, so no load-screen loops -- only the
+-- cinematic camera flies. Streams <<GROUND>>x,y,z,dist per point. ALWAYS ends the cinematic on finish/abort.
 --
 -- Altitude-follow (GetHeightAboveTerrain reaches ~155u; the map spans ~500u): hold the prop ~CLEAR above the
 -- LAST reading; if a point is out of range, nudge the guess and retry it next tick.
@@ -13,7 +12,7 @@ local KEYVAL = "f5"   -- toggle key (add "GroundStream.lua=f5" under [OnKey]); p
 -- ★ CONFIG: RES_X / RES_Y (grid spacing in world units; 32 = one per webmap cell), MAP_HALF, TEMPLATE.
 
 local Ess = _G.Ess
-if not (Ess and Ess.Player and Ess.Loop and Ess.Object) then
+if not (Ess and Ess.Camera and Ess.Player and Ess.Loop and Ess.Object) then
     if Loader and Loader.Printf then Loader.Printf("[groundstream] load Ess (dist/Ess.lua) first") end
     return
 end
@@ -31,11 +30,11 @@ local DT = 0.05
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
 local function clamp(v, lo, hi) if v < lo then return lo elseif v > hi then return hi else return v end end
 
-_G.GroundStream = _G.GroundStream or { on = false, n = 0, prop = nil, cam = nil }
+_G.GroundStream = _G.GroundStream or { on = false, n = 0, prop = nil }
 local S = _G.GroundStream
 
 local function restore()
-    if S.cam then pcall(Camera.Hold, S.cam, false, false) end   -- hand the camera back to the game
+    pcall(Ess.Camera.endCinematic, 0)                            -- hand the camera back to the game (never leave it held)
     if S.prop and Ess.Object.valid(S.prop) then pcall(Object.Remove, S.prop) end
     S.prop = nil
 end
@@ -49,22 +48,19 @@ end
 local px, py, pz = Ess.Player.pose(0)
 if not px then Ess.Log("[groundstream] no player character"); return end
 
-S.cam = Ess.Player.camera(0)                     -- the player's camera guid
-if not S.cam then Ess.Log("[groundstream] no camera"); return end
 S.prop = Ess.Object.spawn(TEMPLATE, px, py, pz, 0)
 if not (S.prop and Ess.Object.valid(S.prop)) then Ess.Log("[groundstream] couldn't spawn '" .. TEMPLATE .. "'"); return end
 pcall(Object.DisablePhysics, S.prop)
 
-pcall(Camera.Blend, S.cam, 0)                    -- instant (a moving camera needs blend 0)
-pcall(Camera.SetLookAt, S.cam, S.prop)           -- point at the prop -> this is what lets Camera.SetPosition commit
-pcall(Camera.Hold, S.cam, true, false)           -- take the camera over
+pcall(Ess.Camera.beginCinematic, 0, 0)           -- take the camera over (blend 0 = instant, no lag on moves)
+pcall(Ess.Camera.lookAtObject, S.prop, nil, 0)   -- auto-track the prop; the camera follows it as it steps
 
 S.on, S.n, S.guess, S.retry = true, 0, py or 0, 0
 S.cols = math.floor(2 * MAP_HALF / RES_X) + 1
 S.rows = math.floor(2 * MAP_HALF / RES_Y) + 1
 S.ix, S.iz = 0, 0
 wsline("<<ROADLOG>>START")
-Ess.Log(string.format("[groundstream] freecam scan %dx%d (%d pts) @ res %d,%d. Player stays put; F5 aborts.",
+Ess.Log(string.format("[groundstream] cinematic scan %dx%d (%d pts) @ res %d,%d. Player stays put; F5 aborts.",
     S.cols, S.rows, S.cols * S.rows, RES_X, RES_Y))
 
 Ess.Loop.start(LOOP_ID, DT, function()
@@ -80,7 +76,7 @@ Ess.Loop.start(LOOP_ID, DT, function()
     local alt = S.guess + CLEAR
 
     pcall(Object.SetPosition, S.prop, x, alt, z)                 -- step the prop to the grid point
-    pcall(Camera.SetPosition, S.cam, x, alt + CAM_UP, z, true)   -- fly the camera there too (streams; no player move)
+    pcall(Ess.Camera.placeCamera, x, alt + CAM_UP, z, 0)         -- move the camera with it (streams; no player move)
     local okh, h = pcall(Object.GetHeightAboveTerrain, S.prop)
 
     local advance = false
