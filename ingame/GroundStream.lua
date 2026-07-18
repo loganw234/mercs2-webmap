@@ -1,13 +1,17 @@
 local KEYVAL = "f5"   -- toggle key (add "GroundStream.lua=f5" under [OnKey])
 
--- GroundStream.lua -- fly-around terrain gatherer with a WIDE scan. It rigidly welds a grid of tiny probes to
--- your vehicle (Object.Attach -- the offset is applied by spawning each probe at its offset, THEN attaching,
--- so the weld holds it there) and reads Object.GetHeightAboveTerrain on EVERY probe each tick. So one pass
--- sweeps a whole swath instead of a single line. Streams <<GROUND>>x,y,z,dist per probe; ground-gather.html
--- turns each into a terrain point. Fly LOW: GetHeightAboveTerrain reaches ~155u down.
+-- GroundStream.lua -- fly-around terrain gatherer with a WIDE scan. Rigidly welds a grid of tiny probes to
+-- your vehicle and reads Object.GetHeightAboveTerrain on EVERY probe each tick -- so one pass sweeps a whole
+-- swath, not a single line. Streams <<GROUND>>x,y,z,dist per probe; ground-gather.html turns each into a
+-- terrain point. Fly LOW: GetHeightAboveTerrain reaches ~155u down.
 --
--- ★ TUNE: GRID_N x SPACING = swath width; TEMPLATE (any spawnable prop -- physics off, just a point to read
---   from); HARDPOINT (attach anchor on the vehicle; the per-probe offset is what actually spaces the grid).
+-- The weld: spawn each probe at its grid offset, WAIT ATTACH_DELAY for the fresh spawn's transform to init
+-- (attaching immediately silently no-ops -> "doesn't stick"), snap it to the heli's CURRENT pos + offset,
+-- then Object.Attach so it rides along. The prop MUST weld rigidly: "Verification Camera" sticks; physics
+-- props like "Cash (Large)" don't.
+--
+-- ★ TUNE: GRID_N x SPACING = swath width; TEMPLATE; ATTACH_DELAY; HARDPOINT (anchor -- the per-probe offset
+--   is what actually spaces the grid).
 
 local Ess = _G.Ess
 if not (Ess and Ess.Player and Ess.Loop and Ess.Object) then
@@ -16,13 +20,14 @@ if not (Ess and Ess.Player and Ess.Loop and Ess.Object) then
 end
 
 local LOOP_ID, INTERVAL, SENTINEL = "GroundStream", 0.2, 150
-local GRID_N, SPACING = 5, 32      -- GRID_N x GRID_N probes SPACING apart -> a (GRID_N-1)*SPACING-wide swath
-local TEMPLATE = "Cash (Large)"    -- any spawnable prop (we only read its position, physics off)
-local HARDPOINT = ""               -- attach anchor; offset comes from pre-positioning each probe
+local GRID_N, SPACING = 5, 32          -- GRID_N x GRID_N probes SPACING apart -> a (GRID_N-1)*SPACING-wide swath
+local TEMPLATE = "Verification Camera" -- welds rigidly (physics props like "Cash (Large)" don't stick)
+local HARDPOINT = ""                   -- attach anchor; the per-probe spawn offset is what spaces the grid
+local ATTACH_DELAY = 0.5               -- let each fresh probe's transform init before attaching (~0.3s min)
 
 local function wsline(s) if Loader and Loader.WsSend then pcall(Loader.WsSend, s) end end
 
-_G.GroundStream = _G.GroundStream or { on = false, n = 0, probes = {}, parent = nil }
+_G.GroundStream = _G.GroundStream or { on = false, n = 0, probes = {}, offsets = {}, parent = nil }
 local S = _G.GroundStream
 
 local function cleanup()
@@ -32,7 +37,7 @@ local function cleanup()
             pcall(Object.Remove, u)
         end
     end
-    S.probes = {}
+    S.probes, S.offsets = {}, {}
 end
 
 if S.on then                                     -- second press: STOP
@@ -43,30 +48,46 @@ end
 local x, y, z, _, char = Ess.Player.pose(0)
 if not char then Ess.Log("[groundstream] no player character"); return end
 
--- weld the probe grid to the vehicle you're flying (or the character, on foot)
-S.parent = Ess.Object.vehicleOf(char) or char
-S.on, S.n, S.probes = true, 0, {}
+S.parent = Ess.Object.vehicleOf(char) or char   -- the heli you're flying (or the character, on foot)
+S.on, S.n, S.probes, S.offsets, S.attached, S.wait = true, 0, {}, {}, false, ATTACH_DELAY
 local okp, ppx, ppy, ppz = pcall(Object.GetPosition, S.parent)
 if not (okp and ppx) then ppx, ppy, ppz = x, y, z end
 
 local half = (GRID_N - 1) / 2
 for i = 0, GRID_N - 1 do
     for j = 0, GRID_N - 1 do
-        local u = Ess.Object.spawn(TEMPLATE, ppx + (i - half) * SPACING, ppy, ppz + (j - half) * SPACING, 0)   -- at the offset...
+        local ox, oz = (i - half) * SPACING, (j - half) * SPACING
+        local u = Ess.Object.spawn(TEMPLATE, ppx + ox, ppy, ppz + oz, 0)
         if u then
             pcall(Object.DisablePhysics, u)
-            pcall(Object.Attach, S.parent, HARDPOINT, u)                                                        -- ...rigid-weld it there
             S.probes[#S.probes + 1] = u
+            S.offsets[#S.probes] = { ox = ox, oz = oz }
         end
     end
 end
-if #S.probes == 0 then S.on = false; Ess.Log("[groundstream] no probes spawned -- TEMPLATE valid?"); return end
-Ess.Log(string.format("[groundstream] STARTED -- %d probes (%dx%d @ %du, %du swath). Fly low; F5 to stop.",
-    #S.probes, GRID_N, GRID_N, SPACING, (GRID_N - 1) * SPACING))
+if #S.probes == 0 then S.on = false; Ess.Log("[groundstream] no probes spawned -- TEMPLATE '" .. TEMPLATE .. "' valid?"); return end
+Ess.Log(string.format("[groundstream] STARTED -- %d probes (%dx%d @ %du, %du swath); welding in %.1fs. Fly low; F5 to stop.",
+    #S.probes, GRID_N, GRID_N, SPACING, (GRID_N - 1) * SPACING, ATTACH_DELAY))
 
 Ess.Loop.start(LOOP_ID, INTERVAL, function()
     if not S.on then return false end
-    for _, u in ipairs(S.probes) do
+
+    if not S.attached then                       -- wait for transforms, then snap-to-grid + weld the whole set
+        S.wait = S.wait - INTERVAL
+        if S.wait > 0 then return true end
+        local okc, cx, cy, cz = pcall(Object.GetPosition, S.parent)
+        for k, u in ipairs(S.probes) do
+            if Ess.Object.valid(u) then
+                if okc and cx then pcall(Object.SetPosition, u, cx + S.offsets[k].ox, cy, cz + S.offsets[k].oz) end
+                pcall(Object.Attach, S.parent, HARDPOINT, u)
+            end
+        end
+        S.attached = true
+        Ess.Log("[groundstream] probes welded; streaming.")
+        return true
+    end
+
+    for _, u in ipairs(S.probes) do              -- poll every probe -> a swath of readings per tick
         if Ess.Object.valid(u) then
             local ok, ux, uy, uz = pcall(Object.GetPosition, u)
             local okh, h = pcall(Object.GetHeightAboveTerrain, u)
