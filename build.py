@@ -55,6 +55,9 @@ def main():
     data = (map_js.read_text(encoding="utf-8") + "\n"
             + read("data", "collectibles.js") + "\n"
             + read("data", "teleports.js"))
+    hm = SRC / "data" / "heightmap.js"   # optional -- built by tools/build_heightmap.py from data/*.log
+    if hm.exists():
+        data += "\n" + hm.read_text(encoding="utf-8")
 
     app_files = sorted((SRC / "app").glob("*.js"))
     app = "\n".join("/* ==== %s ==== */\n%s" % (p.name, p.read_text(encoding="utf-8")) for p in app_files)

@@ -39,6 +39,13 @@
         <p class="hint">Any JSON array of <code>{position:{x,y,z}}</code> points drops in as a new layer.</p>
       </section>
 
+      <section id="hmSection" hidden>
+        <h2>Heightmap</h2>
+        <label class="chk small"><input type="checkbox" id="hmToggle"> Show elevation overlay</label>
+        <div id="hmLegend" class="hm-legend"></div>
+        <p class="hint" id="hmInfo"></p>
+      </section>
+
       <section id="tpSection">
         <h2>Teleport spots</h2>
         <button type="button" id="saveSpotBtn" class="btn small" disabled title="Connect to the game to save your position">＋ Save current spot</button>

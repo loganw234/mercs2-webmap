@@ -10,6 +10,7 @@
     var built = window.MERCS_DATASETS || [];
     built.forEach(function (ds) { try { WM.addDataset(ds); } catch (e) { /* one bad dataset shouldn't kill the map */ } });
     if (WM.teleports) { try { WM.teleports.init(); } catch (e) {} }   // built-in + localStorage spots -> the teleport layer
+    if (WM.initHeightmap) { try { WM.initHeightmap(); } catch (e) {} }   // ground-height grid: query + elevation overlay
     WM.renderLayerPanel();
     WM.renderLegend();
     if (WM.updateProgress) WM.updateProgress();

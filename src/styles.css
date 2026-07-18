@@ -119,6 +119,11 @@ html,body{ margin:0; height:100%; background:var(--bg); color:var(--ink);
 .modal-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
 .modal-actions .btn{ width:auto; }
 
+/* heightmap legend */
+.hm-legend{ margin-top:8px; }
+.hm-bar{ height:10px; border-radius:3px; border:1px solid var(--line); }
+.hm-scale{ display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:3px; }
+
 @media (max-width:640px){ .panel{ width:calc(100% - 24px); max-height:52%; } }
 
 /* ---- update bar (downloaded/bridge-served copies only -- 80_update.js) ---- */

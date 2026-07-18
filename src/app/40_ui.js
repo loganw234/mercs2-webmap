@@ -93,6 +93,9 @@
       try { document.execCommand("copy"); done(); } catch (e) {}
     });
 
+    var hmToggle = $("hmToggle");
+    if (hmToggle) hmToggle.addEventListener("change", function (e) { WM.setHeightmapVisible(e.target.checked); });
+
     // ---- "Teleport to all" toggle (with the obligatory ceremony) ----
     var tpAll = $("tpAllToggle");
     if (tpAll) {

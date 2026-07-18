@@ -56,7 +56,9 @@
     map.on("mousemove", function (e) {
       if (!bar) return;
       var w = latLngToWorld(e.latlng);
-      bar.textContent = "world   x " + Math.round(w.x) + "    z " + Math.round(w.z);
+      var t = "world   x " + Math.round(w.x) + "    z " + Math.round(w.z);
+      if (WM.heightAt) { var h = WM.heightAt(w.x, w.z); if (h != null) t += "    ground ~ " + h.toFixed(1); }
+      bar.textContent = t;
     });
     map.on("mouseout", function () { if (bar) bar.textContent = ""; });
     return map;
