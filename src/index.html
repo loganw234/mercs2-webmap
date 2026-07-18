@@ -1,0 +1,56 @@
+<!-- src/index.html -- shell for the Mercs2 webmap. build.py inlines every marker below into ONE standalone
+     dist/index.html (Leaflet + CSS + data + app), so the output is self-contained: it works hosted on GitHub
+     Pages, downloaded and opened off disk (file://), or served by the lua-bridge itself. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mercs2 Live Map</title>
+
+<style>/*__LEAFLET_CSS__*/</style>
+<style>/*__CSS__*/</style>
+
+<div id="app">
+  <div id="map"></div>
+
+  <aside id="panel" class="panel">
+    <header>
+      <h1>Mercs2 Live Map</h1>
+      <button id="panelToggle" title="Collapse / expand">‹</button>
+    </header>
+
+    <div class="scroll">
+      <section>
+        <h2>Layers</h2>
+        <div id="layerList" class="rows"></div>
+        <label class="fileBtn">＋ Load JSON layer…
+          <input type="file" id="loadJson" accept=".json,application/json" hidden>
+        </label>
+        <p class="hint">Any JSON array of <code>{position:{x,y,z}}</code> points drops in as a new layer.</p>
+      </section>
+
+      <section>
+        <h2>Live player <span id="liveDot" class="dot closed" title="not connected"></span></h2>
+        <button id="liveBtn" class="btn">Connect to game</button>
+        <div id="liveInfo" hidden>
+          <div id="liveCoords" class="mono readout">—</div>
+          <label class="chk"><input type="checkbox" id="followChk"> Follow player</label>
+        </div>
+        <p id="liveHint" class="hint">
+          Optional. Needs the game running with the lua-bridge (WebSocket on <code>127.0.0.1:27050</code>).
+          Chrome will ask once to allow the local connection.
+        </p>
+      </section>
+    </div>
+
+    <footer>
+      <div id="legend" class="legend"></div>
+      <p class="credit">CRS.Simple · calibrated to the 8204² world map · <span>Leaflet</span></p>
+    </footer>
+  </aside>
+
+  <div id="coordBar" class="mono"></div>
+</div>
+
+<script>/*__LEAFLET_JS__*/</script>
+<script>/*__BRIDGE__*/</script>
+<script>/*__DATA__*/</script>
+<script>/*__APP__*/</script>
