@@ -56,6 +56,11 @@
       <section id="hmSection" hidden>
         <h2>Heightmap</h2>
         <label class="chk small"><input type="checkbox" id="hmToggle"> Show elevation overlay</label>
+        <label class="chk small"><input type="checkbox" id="hmShade" checked> Hillshade relief</label>
+        <label class="chk small"><input type="checkbox" id="hmContour"> Contour lines (25u)</label>
+        <label class="chk small" title="Flat (&lt;8°), dry, fully-scanned ground — heli landing / build spots"><input type="checkbox" id="hmLZ"> LZ finder (flat ground)</label>
+        <button type="button" id="hmProfileBtn" class="btn secondary small">📈 Elevation profile</button>
+        <p class="hint">Right-click the map for a ground-snapped teleport. Profile shows line-of-sight A→B.</p>
         <div id="hmLegend" class="hm-legend"></div>
         <p class="hint" id="hmInfo"></p>
       </section>

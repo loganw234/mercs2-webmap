@@ -60,7 +60,14 @@
       if (!bar) return;
       var w = latLngToWorld(e.latlng);
       var t = "world   x " + Math.round(w.x) + "    z " + Math.round(w.z);
-      if (WM.heightAt) { var h = WM.heightAt(w.x, w.z); if (h != null) t += "    ground ~ " + h.toFixed(1); }
+      if (WM.heightAt) {
+        var h = WM.heightAt(w.x, w.z);
+        if (h != null) {
+          t += "    ground ~ " + h.toFixed(1);
+          var s = WM.slopeAt ? WM.slopeAt(w.x, w.z) : null;
+          if (s != null && s >= 0.5) t += "    slope " + Math.round(s) + "°";
+        }
+      }
       bar.textContent = t;
     });
     map.on("mouseout", function () { if (bar) bar.textContent = ""; });

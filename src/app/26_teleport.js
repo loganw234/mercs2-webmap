@@ -132,9 +132,31 @@
     })();
   }
 
+  // Right-click anywhere -> ground-snapped teleport popup. The heightmap tensor supplies the safe y that
+  // arbitrary-point teleports never had: land = ground + 2, water = just above the -35 surface, and if the
+  // spot is unscanned we say so and jump in high (200) rather than guessing into the ground.
+  function groundPopup(e) {
+    var w = WM.latLngToWorld(e.latlng);
+    var h = WM.heightAt ? WM.heightAt(w.x, w.z) : null;
+    var s = WM.slopeAt ? WM.slopeAt(w.x, w.z) : null;
+    var SEA = -35;
+    var y, desc;
+    if (h == null) { y = 200; desc = "no height data — will drop in from 200"; }
+    else if (h <= SEA) { y = SEA + 2; desc = "water · depth ~" + Math.round(SEA - h) + "u (seabed " + h.toFixed(1) + ")"; }
+    else { y = h + 2; desc = "ground " + h.toFixed(1) + (s != null && s >= 0.5 ? " · slope " + Math.round(s) + "°" : ""); }
+
+    var div = document.createElement("div");
+    div.innerHTML = "<b>" + Math.round(w.x) + ", " + Math.round(w.z) + "</b><br><span class='hint'>" + desc + "</span><br>";
+    var btn = document.createElement("button"); btn.type = "button";
+    div.appendChild(btn);
+    wireTeleportButton(btn, { x: w.x, y: y, z: w.z, yaw: 0 });
+    L.popup({ closeButton: true }).setLatLng(e.latlng).setContent(div).openOn(WM.map);
+  }
+
   // Teleport spots get their button (+ delete). With "Teleport to all" on, every OTHER marker gets a
   // teleport button injected into its popup too.
   WM.initTeleport = function () {
+    WM.map.on("contextmenu", groundPopup);
     WM.map.on("popupopen", function (e) {
       var mk = e.popup && e.popup._source; if (!mk) return;
       var el = e.popup.getElement && e.popup.getElement(); if (!el) return;

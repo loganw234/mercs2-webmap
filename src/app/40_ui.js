@@ -95,6 +95,14 @@
 
     var hmToggle = $("hmToggle");
     if (hmToggle) hmToggle.addEventListener("change", function (e) { WM.setHeightmapVisible(e.target.checked); });
+    var hmShade = $("hmShade");
+    if (hmShade) hmShade.addEventListener("change", function (e) { WM.setHillshade(e.target.checked); });
+    var hmContour = $("hmContour");
+    if (hmContour) hmContour.addEventListener("change", function (e) { WM.setContours(e.target.checked); });
+    var hmProfile = $("hmProfileBtn");
+    if (hmProfile) hmProfile.addEventListener("click", function () { WM.startProfile(); });
+    var hmLZ = $("hmLZ");
+    if (hmLZ) hmLZ.addEventListener("change", function (e) { WM.setLZVisible(e.target.checked); });
 
     // ---- mapping session (telemetry-driven; buttons just export/clear the collected trail) ----
     var mapExportPane = $("mapExportPane"), mapExportText = $("mapExportText");

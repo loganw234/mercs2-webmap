@@ -51,7 +51,16 @@
     m.setLatLng(ll);
     if (m.bringToFront) m.bringToFront();
     var c = document.getElementById("liveCoords");
-    if (c) c.textContent = "x " + x.toFixed(1) + "   y " + y.toFixed(1) + "   z " + z.toFixed(1);
+    if (c) {
+      var t = "x " + x.toFixed(1) + "   y " + y.toFixed(1) + "   z " + z.toFixed(1);
+      var g = WM.heightAt ? WM.heightAt(x, z) : null;
+      if (g != null) {
+        var agl = y - g;
+        if (agl > 3) t += "   AGL " + agl.toFixed(0);         // flying / falling / on a roof
+        if (y < -35) t += "   UNDERWATER";                    // below the sea surface
+      }
+      c.textContent = t;
+    }
     if (WM.follow) WM.map.panTo(ll, { animate: false });   // instant re-center; animating every tick is what janks
   }
 
