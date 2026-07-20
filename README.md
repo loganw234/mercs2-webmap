@@ -87,6 +87,11 @@ tools/gen_map_image.py       downscale + base64 the source map into src/data/map
 The overlay itself only ever *reads* position. The one thing that writes to the game is the **⇱ Teleport
 here** button — and only when you click it.
 
+
+## License
+
+[MIT](LICENSE) -- matching the rest of the Mercenaries 2 tooling.
+
 ## Disclaimer
 
 This is an unofficial, non-commercial community fan project. It is **not affiliated with, associated with,
