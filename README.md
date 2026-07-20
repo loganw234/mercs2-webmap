@@ -86,3 +86,17 @@ tools/gen_map_image.py       downscale + base64 the source map into src/data/map
 
 The overlay itself only ever *reads* position. The one thing that writes to the game is the **⇱ Teleport
 here** button — and only when you click it.
+
+## Disclaimer
+
+This is an unofficial, non-commercial community fan project. It is **not affiliated with, associated with,
+authorized by, endorsed by, or in any way officially connected to Electronic Arts or Pandemic Studios**.
+*Mercenaries 2: World in Flames* and all related marks are the property of their respective owners.
+
+`src/data/map-image.js` is a heavily downscaled, recompressed copy of the in-game world map, included only as
+a backdrop for plotting coordinates against. The terrain height data under `data/` is original measurement
+output captured by probing a running game, not extracted game content. Nothing else here redistributes game
+assets, and the tooling requires your own legally-obtained copy of the game.
+
+If a rights holder objects to anything in this repository, contact me and I will comply with a removal
+request.
